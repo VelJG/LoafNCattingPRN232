@@ -1,0 +1,52 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# .NET build output
+bin/
+obj/
+TestResults/
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# ASP.NET / local secrets
+appsettings.Development.json
+appsettings.*.local.json
+secrets.json
+
+# Node / React
+node_modules/
+dist/
+build/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.turbo/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Misc generated files
+*.tmp
+*.temp
