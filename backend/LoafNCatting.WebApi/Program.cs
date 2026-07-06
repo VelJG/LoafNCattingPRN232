@@ -1,5 +1,6 @@
 using LoafNCatting.Application.Interfaces.Common;
 using LoafNCatting.Application.Interfaces.Repositories;
+using LoafNCatting.Caching.Extensions;
 using LoafNCatting.Infrastructure.Context;
 using LoafNCatting.Infrastructure.Repositories;
 using LoafNCatting.Persistence.Models;
@@ -18,6 +19,7 @@ builder.Services.AddScoped<DbFactoryContext>();
 builder.Services.AddScoped<IApplicationDbContext, ApplicationDbContext>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddCacheServices();
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
