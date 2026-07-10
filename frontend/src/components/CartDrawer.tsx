@@ -13,7 +13,7 @@ export function CartDrawer() {
         aria-label="Close cart"
         onClick={cart.close}
       />
-      <aside className={cart.isOpen ? 'cart-drawer cart-drawer--open' : 'cart-drawer'} aria-hidden={!cart.isOpen}>
+      <aside id="shopping-cart" className={cart.isOpen ? 'cart-drawer cart-drawer--open' : 'cart-drawer'} aria-label="Shopping cart" aria-hidden={!cart.isOpen}>
         <div className="cart-drawer__header">
           <div>
             <span className="eyebrow">Your order</span>
@@ -53,7 +53,7 @@ export function CartDrawer() {
         {cart.items.length > 0 && (
           <div className="cart-drawer__footer">
             <div className="price-row"><span>Total</span><strong>{formatVnd(cart.total)}</strong></div>
-            <button className="button button--primary button--full" type="button">Continue to checkout</button>
+            <button className="button button--primary button--full" type="button" disabled>Checkout is not available yet</button>
             <p>Mock cart for UI architecture · checkout comes next.</p>
           </div>
         )}

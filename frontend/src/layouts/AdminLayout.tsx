@@ -13,13 +13,14 @@ const adminItems = [
 export function AdminLayout() {
   return (
     <div className="admin-shell">
+      <a className="skip-link" href="#admin-main">Skip to content</a>
       <aside className="admin-sidebar">
         <BrandLogo compact />
         <div className="admin-sidebar__label">Workspace</div>
         <nav aria-label="Admin navigation">
           {adminItems.map((item) => {
             const Icon = item.icon
-            return <button className={item.active ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} key={item.label} type="button"><Icon /><span>{item.label}</span></button>
+            return <button className={item.active ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} key={item.label} type="button" disabled={!item.active}><Icon /><span>{item.label}</span></button>
           })}
         </nav>
         <div className="admin-sidebar__footer">
@@ -32,7 +33,7 @@ export function AdminLayout() {
           <div><span className="eyebrow">Friday, 10 July</span><strong>Good morning, Linh</strong></div>
           <div className="admin-profile"><span><strong>Linh Nguyen</strong><small>Store manager</small></span><div>LN</div></div>
         </header>
-        <main><Outlet /></main>
+        <main id="admin-main"><Outlet /></main>
       </div>
     </div>
   )

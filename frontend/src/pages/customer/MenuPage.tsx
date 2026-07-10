@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MdAdd, MdArrowForward, MdLocalCafe, MdPets, MdSearch, MdTune } from 'react-icons/md'
+import { MdAdd, MdArrowForward, MdLocalCafe, MdPets, MdSearch } from 'react-icons/md'
 import { categories } from '../../data/mockData'
 import { catalogRepository } from '../../services/catalogRepository'
 import { useCart } from '../../state/CartContext'
@@ -50,7 +50,6 @@ export function MenuPage() {
           <div><span className="eyebrow">Today at Loaf</span><h2>Find your cafe favorite</h2><p>{availableCount} items available right now.</p></div>
           <div className="menu-toolbar">
             <label className="search-field"><MdSearch /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="Search drinks and treats" /></label>
-            <button className="filter-button" type="button" aria-label="Open filters"><MdTune /></button>
           </div>
         </div>
 
