@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace LoafNCatting.Persistence.Models;
+namespace LoafNCatting.Entity.Models;
 
 public partial class User
 {
@@ -26,6 +26,12 @@ public partial class User
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public bool IsEmailVerified { get; set; }
+
+    public string? EmailVerificationOtpHash { get; set; }
+
+    public DateTime? EmailVerificationOtpExpiresAt { get; set; }
 
     public virtual ICollection<Cart> Carts { get; set; } = new List<Cart>();
 

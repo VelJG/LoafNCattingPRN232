@@ -2,7 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LoafNCatting.Application\LoafNCatting.Application.csproj" />
-    <ProjectReference Include="..\LoafNCatting.Persistence\LoafNCatting.Persistence.csproj" />
+    <ProjectReference Include="..\LoafNCatting.Entity\LoafNCatting.Entity.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

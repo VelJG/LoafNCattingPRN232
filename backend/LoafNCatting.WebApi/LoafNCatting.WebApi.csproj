@@ -17,9 +17,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LoafNCatting.Caching\LoafNCatting.Caching.csproj" />
-    <ProjectReference Include="..\LoafNCatting.Persistence\LoafNCatting.Persistence.csproj" />
+    <ProjectReference Include="..\LoafNCatting.Entity\LoafNCatting.Entity.csproj" />
     <ProjectReference Include="..\LoafNCatting.Application\LoafNCatting.Application.csproj" />
     <ProjectReference Include="..\LoafNCatting.Infrastructure\LoafNCatting.Infrastructure.csproj" />
+    <ProjectReference Include="..\LoafNCatting.Services\LoafNCatting.Services.csproj" />
   </ItemGroup>
 
 </Project>

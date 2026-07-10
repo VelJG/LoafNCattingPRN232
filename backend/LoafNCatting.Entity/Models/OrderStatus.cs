@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace LoafNCatting.Persistence.Models;
+namespace LoafNCatting.Entity.Models;
 
 public partial class OrderStatus
 {

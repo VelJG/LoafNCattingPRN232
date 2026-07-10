@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LoafNCatting.Caching\LoafNCatting.Caching.csproj" />
+    <ProjectReference Include="..\LoafNCatting.Infrastructure\LoafNCatting.Infrastructure.csproj" />
+    <ProjectReference Include="..\LoafNCatting.Application\LoafNCatting.Application.csproj" />
+    <ProjectReference Include="..\LoafNCatting.Entity\LoafNCatting.Entity.csproj" />
+  </ItemGroup>
+
+</Project>

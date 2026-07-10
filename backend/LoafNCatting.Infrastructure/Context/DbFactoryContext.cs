@@ -1,4 +1,4 @@
-using LoafNCatting.Persistence.Models;
+using LoafNCatting.Entity.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace LoafNCatting.Infrastructure.Context;

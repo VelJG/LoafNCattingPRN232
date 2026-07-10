@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace LoafNCatting.Persistence.Models;
+namespace LoafNCatting.Entity.Models;
 
-public partial class CatStatus
+public partial class ReservationStatus
 {
     public int StatusId { get; set; }
 
@@ -11,5 +11,5 @@ public partial class CatStatus
 
     public string? Description { get; set; }
 
-    public virtual ICollection<Cat> Cats { get; set; } = new List<Cat>();
+    public virtual ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();
 }
