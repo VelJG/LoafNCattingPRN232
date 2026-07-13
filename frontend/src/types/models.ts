@@ -1,15 +1,14 @@
-export type CategoryId = 'coffee' | 'tea' | 'cake' | 'combo'
-
 export interface Category {
-  id: CategoryId
+  id: number
   name: string
+  description?: string
 }
 
 export interface Product {
   id: number
   name: string
   description: string
-  categoryId: CategoryId
+  categoryId: number
   categoryName: string
   price: number
   discountPrice?: number
@@ -19,19 +18,18 @@ export interface Product {
   badge?: string
 }
 
-export type CatAvailability = 'At the cafe' | 'Resting' | 'In care'
-
 export interface CatProfile {
   id: number
   name: string
   breed: string
-  age: number
-  gender: string
-  status: CatAvailability
+  age?: number
+  gender?: string
+  status: string
   description: string
-  friendliness: number
-  playfulness: number
+  friendliness?: number
+  playfulness?: number
   imageUrl: string
+  cuteness?: number
 }
 
 export interface CafeTable {

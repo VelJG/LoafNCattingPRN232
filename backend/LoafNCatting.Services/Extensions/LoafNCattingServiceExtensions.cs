@@ -1,8 +1,10 @@
 using LoafNCatting.Application.Interfaces.Common;
 using LoafNCatting.Application.Interfaces.Repositories;
+using LoafNCatting.Application.Interfaces.Services;
 using LoafNCatting.Entity.Models;
 using LoafNCatting.Infrastructure.Context;
 using LoafNCatting.Infrastructure.Repositories;
+using LoafNCatting.Services.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +35,10 @@ public static class LoafNCattingServiceExtensions
 
     public static IServiceCollection AddLoafNCattingServices(this IServiceCollection services)
     {
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<ICatService, CatService>();
+
         return services;
     }
 }
