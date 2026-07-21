@@ -8,10 +8,10 @@ import type {
 } from '../types/models'
 
 export const categories: Category[] = [
-  { id: 'coffee', name: 'Coffee' },
-  { id: 'tea', name: 'Tea & Matcha' },
-  { id: 'cake', name: 'Cakes' },
-  { id: 'combo', name: 'Cafe combos' },
+  { id: 1, name: 'Coffee' },
+  { id: 2, name: 'Tea & Matcha' },
+  { id: 3, name: 'Cakes' },
+  { id: 4, name: 'Cafe combos' },
 ]
 
 export const products: Product[] = [
@@ -19,7 +19,7 @@ export const products: Product[] = [
     id: 1,
     name: 'Caramel Catpuccino',
     description: 'Double espresso, silky milk and house caramel.',
-    categoryId: 'coffee',
+    categoryId: 1,
     categoryName: 'Coffee',
     price: 59000,
     stock: 18,
@@ -32,7 +32,7 @@ export const products: Product[] = [
     id: 2,
     name: 'Orange Cold Brew',
     description: 'Slow-steeped coffee brightened with fresh orange.',
-    categoryId: 'coffee',
+    categoryId: 1,
     categoryName: 'Coffee',
     price: 65000,
     discountPrice: 59000,
@@ -46,7 +46,7 @@ export const products: Product[] = [
     id: 3,
     name: 'Cloud Matcha Latte',
     description: 'Ceremonial matcha with lightly sweetened fresh milk.',
-    categoryId: 'tea',
+    categoryId: 2,
     categoryName: 'Tea & Matcha',
     price: 62000,
     stock: 9,
@@ -58,7 +58,7 @@ export const products: Product[] = [
     id: 4,
     name: 'Butter Paw Croissant',
     description: 'Flaky butter croissant baked fresh every morning.',
-    categoryId: 'cake',
+    categoryId: 3,
     categoryName: 'Cakes',
     price: 42000,
     stock: 7,
@@ -70,7 +70,7 @@ export const products: Product[] = [
     id: 5,
     name: 'Strawberry Loaf Cake',
     description: 'Vanilla sponge, fresh cream and seasonal berries.',
-    categoryId: 'cake',
+    categoryId: 3,
     categoryName: 'Cakes',
     price: 72000,
     stock: 5,
@@ -83,7 +83,7 @@ export const products: Product[] = [
     id: 6,
     name: 'Cozy Cat Combo',
     description: 'One signature drink and one pastry of your choice.',
-    categoryId: 'combo',
+    categoryId: 4,
     categoryName: 'Cafe combos',
     price: 99000,
     stock: 0,
