@@ -23,3 +23,16 @@ public sealed record ReservationAvailabilityDto(
     DateTimeOffset StartAt,
     DateTimeOffset EndAt,
     SuggestedTableDto? SuggestedTable);
+
+public sealed record ReservationLifecycleConflictDto(
+    int ReservationId,
+    int TableId,
+    string Reason);
+
+public sealed record ReservationLifecycleResultDto(
+    int TablesReserved,
+    int TablesReleased,
+    int ReservationsMarkedNoShow,
+    int ReservationsMarkedExpired,
+    IReadOnlyList<int> EndingSoonReservationIds,
+    IReadOnlyList<ReservationLifecycleConflictDto> Conflicts);

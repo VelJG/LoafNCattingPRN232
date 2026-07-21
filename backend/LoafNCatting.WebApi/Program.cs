@@ -1,11 +1,13 @@
 ﻿using LoafNCatting.Caching.Extensions;
 using LoafNCatting.Services.Extensions;
+using LoafNCatting.WebApi.BackgroundServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddCacheServices();
 builder.Services.AddLoafNCattingDatabase(builder.Configuration);
 builder.Services.AddLoafNCattingServices();
+builder.Services.AddHostedService<ReservationLifecycleBackgroundService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendDev", policy =>
