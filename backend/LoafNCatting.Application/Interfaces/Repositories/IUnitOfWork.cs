@@ -1,4 +1,5 @@
 using LoafNCatting.Application.Interfaces.Common;
+using System.Data;
 
 namespace LoafNCatting.Application.Interfaces.Repositories;
 
@@ -10,9 +11,11 @@ public interface IUnitOfWork
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
-    Task BeginTransactionAsync();
+    Task BeginTransactionAsync(
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
+        CancellationToken cancellationToken = default);
 
-    Task CommitTransactionAsync();
+    Task CommitTransactionAsync(CancellationToken cancellationToken = default);
 
-    Task RollbackTransactionAsync();
+    Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
 }

@@ -1,6 +1,8 @@
 using LoafNCatting.Application.Interfaces.Common;
 using LoafNCatting.Application.Interfaces.Repositories;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using System.Data;
 
 namespace LoafNCatting.Infrastructure.Repositories;
 
@@ -37,40 +39,44 @@ public class UnitOfWork : IUnitOfWork, IAsyncDisposable
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => ApplicationDbContext.DbContext.SaveChangesAsync(cancellationToken);
 
-    public async Task BeginTransactionAsync()
+    public async Task BeginTransactionAsync(
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
+        CancellationToken cancellationToken = default)
     {
         if (_transaction is not null)
         {
-            return;
+            throw new InvalidOperationException("A transaction is already active for this unit of work.");
         }
 
-        _transaction = await ApplicationDbContext.DbContext.Database.BeginTransactionAsync();
+        _transaction = await ApplicationDbContext.DbContext.Database.BeginTransactionAsync(
+            isolationLevel,
+            cancellationToken);
     }
 
-    public async Task CommitTransactionAsync()
+    public async Task CommitTransactionAsync(CancellationToken cancellationToken = default)
     {
-        await SaveChangesAsync();
+        if (_transaction is null)
+        {
+            throw new InvalidOperationException("No active transaction exists to commit.");
+        }
 
+        await SaveChangesAsync(cancellationToken);
+        await _transaction.CommitAsync(cancellationToken);
+        await _transaction.DisposeAsync();
+        _transaction = null;
+    }
+
+    public async Task RollbackTransactionAsync(CancellationToken cancellationToken = default)
+    {
         if (_transaction is null)
         {
             return;
         }
 
-        await _transaction.CommitAsync();
+        await _transaction.RollbackAsync(cancellationToken);
         await _transaction.DisposeAsync();
         _transaction = null;
-    }
-
-    public async Task RollbackTransactionAsync()
-    {
-        if (_transaction is null)
-        {
-            return;
-        }
-
-        await _transaction.RollbackAsync();
-        await _transaction.DisposeAsync();
-        _transaction = null;
+        ApplicationDbContext.DbContext.ChangeTracker.Clear();
     }
 
     public async ValueTask DisposeAsync()
