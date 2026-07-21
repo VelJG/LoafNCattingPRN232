@@ -35,10 +35,14 @@ public static class LoafNCattingServiceExtensions
 
     public static IServiceCollection AddLoafNCattingServices(this IServiceCollection services)
     {
+
+        services.AddScoped<IAdminProductService, AdminProductService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICatService, CatService>();
 
+
         return services;
     }
 }
+
