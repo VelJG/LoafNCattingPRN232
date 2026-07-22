@@ -169,7 +169,10 @@ public sealed class ReservationAvailabilityServiceTests
         await data.DbContext.SaveChangesAsync();
         var clock = new TestTimeProvider(
             ReservationTestData.VietnamTime(2026, 7, 22, 8, 1));
-        var service = new ReservationService(data.UnitOfWork, clock);
+        var service = new ReservationService(
+            data.UnitOfWork,
+            new NotificationService(data.UnitOfWork, clock),
+            clock);
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             service.GetAvailabilityAsync(Request(8, 30, guests: 2)));
@@ -183,9 +186,14 @@ public sealed class ReservationAvailabilityServiceTests
     }
 
     private static ReservationService CreateService(TestDataContext data)
-        => new(
+    {
+        var clock = new TestTimeProvider(
+            ReservationTestData.VietnamTime(2026, 7, 22, 7, 0));
+        return new ReservationService(
             data.UnitOfWork,
-            new TestTimeProvider(ReservationTestData.VietnamTime(2026, 7, 22, 7, 0)));
+            new NotificationService(data.UnitOfWork, clock),
+            clock);
+    }
 
     private static ReservationAvailabilityRequest Request(int hour, int minute, int guests)
         => new()

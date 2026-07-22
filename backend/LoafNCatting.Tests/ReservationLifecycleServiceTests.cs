@@ -9,7 +9,25 @@ public sealed class ReservationLifecycleServiceTests
     private static readonly DateOnly ReservationDate = new(2026, 7, 22);
 
     [TestMethod]
-    public async Task ProcessDueReservationsAsync_ReservesAvailableTableAtStartTime()
+    public async Task ProcessDueReservationsAsync_ReservesAvailableTableForConfirmedReservationAtStartTime()
+    {
+        await using var data = await CreateScenarioAsync(
+            ReservationTestData.ConfirmedStatusId,
+            ReservationTestData.AvailableTableStatusId);
+        var service = CreateService(data, hour: 9, minute: 0);
+
+        var result = await service.ProcessDueReservationsAsync();
+
+        var table = await data.DbContext.RestaurantTables.SingleAsync();
+        var reservation = await data.DbContext.Reservations.SingleAsync();
+        Assert.AreEqual(1, result.TablesReserved);
+        Assert.AreEqual(ReservationTestData.ReservedTableStatusId, table.TableStatusId);
+        Assert.AreEqual(ReservationTestData.ConfirmedStatusId, reservation.StatusId);
+        Assert.HasCount(0, result.Conflicts);
+    }
+
+    [TestMethod]
+    public async Task ProcessDueReservationsAsync_ExpiresPendingAtStartWithoutReservingTable()
     {
         await using var data = await CreateScenarioAsync(
             ReservationTestData.PendingStatusId,
@@ -20,28 +38,29 @@ public sealed class ReservationLifecycleServiceTests
 
         var table = await data.DbContext.RestaurantTables.SingleAsync();
         var reservation = await data.DbContext.Reservations.SingleAsync();
-        Assert.AreEqual(1, result.TablesReserved);
-        Assert.AreEqual(ReservationTestData.ReservedTableStatusId, table.TableStatusId);
-        Assert.AreEqual(ReservationTestData.PendingStatusId, reservation.StatusId);
-        Assert.HasCount(0, result.Conflicts);
+        Assert.AreEqual(1, result.ReservationsMarkedExpired);
+        Assert.AreEqual(0, result.TablesReserved);
+        Assert.AreEqual(0, result.TablesReleased);
+        Assert.AreEqual(ReservationTestData.ExpiredStatusId, reservation.StatusId);
+        Assert.AreEqual(ReservationTestData.AvailableTableStatusId, table.TableStatusId);
     }
 
     [TestMethod]
-    public async Task ProcessDueReservationsAsync_ExpiresPendingAndReleasesTableAfterHoldWindow()
+    public async Task ProcessDueReservationsAsync_KeepsPendingBeforeStartTime()
     {
         await using var data = await CreateScenarioAsync(
             ReservationTestData.PendingStatusId,
-            ReservationTestData.ReservedTableStatusId);
-        var service = CreateService(data, hour: 9, minute: 30);
+            ReservationTestData.AvailableTableStatusId);
+        var service = CreateService(data, hour: 8, minute: 59);
 
         var result = await service.ProcessDueReservationsAsync();
 
         var table = await data.DbContext.RestaurantTables.SingleAsync();
         var reservation = await data.DbContext.Reservations.SingleAsync();
-        Assert.AreEqual(1, result.ReservationsMarkedExpired);
-        Assert.AreEqual(1, result.TablesReleased);
-        Assert.AreEqual(ReservationTestData.ExpiredStatusId, reservation.StatusId);
+        Assert.AreEqual(ReservationTestData.PendingStatusId, reservation.StatusId);
         Assert.AreEqual(ReservationTestData.AvailableTableStatusId, table.TableStatusId);
+        Assert.AreEqual(0, result.TablesReserved);
+        Assert.AreEqual(0, result.ReservationsMarkedExpired);
     }
 
     [TestMethod]
@@ -103,7 +122,7 @@ public sealed class ReservationLifecycleServiceTests
         int currentTableStatusId)
     {
         await using var data = await CreateScenarioAsync(
-            ReservationTestData.PendingStatusId,
+            ReservationTestData.ConfirmedStatusId,
             currentTableStatusId);
         var service = CreateService(data, hour: 9, minute: 0);
 
@@ -120,8 +139,8 @@ public sealed class ReservationLifecycleServiceTests
     {
         await using var data = await CreateScenarioAsync(
             ReservationTestData.PendingStatusId,
-            ReservationTestData.ReservedTableStatusId);
-        var service = CreateService(data, hour: 9, minute: 30);
+            ReservationTestData.AvailableTableStatusId);
+        var service = CreateService(data, hour: 9, minute: 0);
 
         var firstResult = await service.ProcessDueReservationsAsync();
         var secondResult = await service.ProcessDueReservationsAsync();
@@ -159,8 +178,12 @@ public sealed class ReservationLifecycleServiceTests
         TestDataContext data,
         int hour,
         int minute)
-        => new(
+    {
+        var clock = new TestTimeProvider(
+            ReservationTestData.VietnamTime(2026, 7, 22, hour, minute));
+        return new ReservationService(
             data.UnitOfWork,
-            new TestTimeProvider(
-                ReservationTestData.VietnamTime(2026, 7, 22, hour, minute)));
+            new NotificationService(data.UnitOfWork, clock),
+            clock);
+    }
 }

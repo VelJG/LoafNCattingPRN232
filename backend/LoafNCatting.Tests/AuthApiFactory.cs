@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -17,7 +18,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     public const string Audience = "LoafNCatting.TestClient";
     public const string SigningKey = "integration-test-signing-key-at-least-32-characters";
 
-    private readonly string _databaseName = $"auth-api-{Guid.NewGuid():N}";
+    private readonly string _databaseName = $"api-tests-{Guid.NewGuid():N}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -35,7 +36,13 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<LoafNcattingPrn232Context>>();
             services.RemoveAll<IDbContextOptionsConfiguration<LoafNcattingPrn232Context>>();
             services.AddDbContext<LoafNcattingPrn232Context>(options =>
-                options.UseInMemoryDatabase(_databaseName));
+                options
+                    .UseInMemoryDatabase(_databaseName)
+                    .ConfigureWarnings(warnings => warnings.Ignore(
+                        InMemoryEventId.TransactionIgnoredWarning)));
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(new TestTimeProvider(
+                ReservationTestData.VietnamTime(2026, 7, 22, 7, 0)));
         });
     }
 
@@ -79,5 +86,47 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             "Password1",
             "0900000002",
             null));
+    }
+
+    public async Task SeedReservationDataAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<LoafNcattingPrn232Context>();
+        if (await context.ReservationStatuses.AnyAsync())
+        {
+            return;
+        }
+
+        context.ReservationStatuses.AddRange(
+            new ReservationStatus { StatusId = 1, StatusName = "Đang chờ" },
+            new ReservationStatus { StatusId = 2, StatusName = "Đã xác nhận" },
+            new ReservationStatus { StatusId = 3, StatusName = "Đã hủy" },
+            new ReservationStatus { StatusId = 4, StatusName = "Hoàn thành" },
+            new ReservationStatus { StatusId = 5, StatusName = "Không đến" },
+            new ReservationStatus { StatusId = 6, StatusName = "Đã đến" },
+            new ReservationStatus { StatusId = 7, StatusName = "Hết hạn" });
+        context.TableStatuses.AddRange(
+            new TableStatus { TableStatusId = 1, StatusName = "Trống" },
+            new TableStatus { TableStatusId = 2, StatusName = "Đã đặt" },
+            new TableStatus { TableStatusId = 3, StatusName = "Đang sử dụng" },
+            new TableStatus { TableStatusId = 4, StatusName = "Bảo trì" });
+        context.RestaurantTables.AddRange(
+            new RestaurantTable
+            {
+                TableId = 1,
+                TableName = "A1",
+                Capacity = 2,
+                Area = "Window",
+                TableStatusId = 1
+            },
+            new RestaurantTable
+            {
+                TableId = 2,
+                TableName = "A2",
+                Capacity = 4,
+                Area = "Center",
+                TableStatusId = 1
+            });
+        await context.SaveChangesAsync();
     }
 }

@@ -15,6 +15,8 @@ public sealed class ReservationService : IReservationService
     private const int TableHoldMinutes = 30;
     private const int EndingSoonReminderMinutes = 10;
     private const int ReminderDetectionWindowMinutes = 1;
+    private const int MaximumGuestNameLength = 255;
+    private const int MaximumGuestPhoneNumberLength = 20;
 
     private static readonly TimeOnly FirstBookableTime = new(8, 30);
     private static readonly TimeOnly LastBookableTime = new(20, 30);
@@ -25,6 +27,7 @@ public sealed class ReservationService : IReservationService
     private const string CheckedInReservationStatus = "Đã đến";
     private const string NoShowReservationStatus = "Không đến";
     private const string ExpiredReservationStatus = "Hết hạn";
+    private const string CustomerRoleName = "Customer";
 
     private static readonly string[] BlockingReservationStatuses =
     [
@@ -39,12 +42,163 @@ public sealed class ReservationService : IReservationService
     private const string MaintenanceTableStatus = "Bảo trì";
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationService _notificationService;
     private readonly TimeProvider _timeProvider;
 
-    public ReservationService(IUnitOfWork unitOfWork, TimeProvider timeProvider)
+    public ReservationService(
+        IUnitOfWork unitOfWork,
+        INotificationService notificationService,
+        TimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
+        _notificationService = notificationService;
         _timeProvider = timeProvider;
+    }
+
+    public async Task<ReservationDto> CreateAsync(
+        int customerUserId,
+        CreateReservationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (customerUserId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(customerUserId),
+                "Customer user id must be greater than zero.");
+        }
+
+        ArgumentNullException.ThrowIfNull(request);
+        var (date, time, numberOfGuests, startAt, endAt) = ValidateRequest(
+            new ReservationAvailabilityRequest
+            {
+                Date = request.Date,
+                Time = request.Time,
+                NumberOfGuests = request.NumberOfGuests
+            });
+        var guestName = RequiredTrimmed(request.GuestName, nameof(request.GuestName));
+        var guestPhoneNumber = RequiredTrimmed(
+            request.GuestPhoneNumber,
+            nameof(request.GuestPhoneNumber));
+        var note = string.IsNullOrWhiteSpace(request.Note)
+            ? null
+            : request.Note.Trim();
+
+        if (guestName.Length > MaximumGuestNameLength)
+        {
+            throw new ArgumentException(
+                $"Guest name cannot exceed {MaximumGuestNameLength} characters.",
+                nameof(request));
+        }
+
+        if (guestPhoneNumber.Length > MaximumGuestPhoneNumberLength)
+        {
+            throw new ArgumentException(
+                $"Guest phone number cannot exceed {MaximumGuestPhoneNumberLength} characters.",
+                nameof(request));
+        }
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            var isActiveCustomer = await _unitOfWork.Repository<User>()
+                .Entities
+                .AsNoTracking()
+                .AnyAsync(
+                    user =>
+                        user.UserId == customerUserId &&
+                        user.IsActive &&
+                        user.Role.RoleName == CustomerRoleName,
+                    cancellationToken);
+            if (!isActiveCustomer)
+            {
+                throw new UnauthorizedAccessException(
+                    "The authenticated customer account is not active or valid.");
+            }
+
+            var endTime = time.AddMinutes(ReservationDurationMinutes);
+            var earliestOverlappingStart = time.AddMinutes(-ReservationDurationMinutes);
+            var hasCustomerOverlap = await _unitOfWork.Repository<Reservation>()
+                .Entities
+                .AsNoTracking()
+                .AnyAsync(
+                    reservation =>
+                        reservation.UserId == customerUserId &&
+                        reservation.Date == date &&
+                        BlockingReservationStatuses.Contains(reservation.Status.StatusName) &&
+                        reservation.Time < endTime &&
+                        reservation.Time > earliestOverlappingStart,
+                    cancellationToken);
+            if (hasCustomerOverlap)
+            {
+                throw new InvalidOperationException(
+                    "The customer already has an overlapping active reservation.");
+            }
+
+            var suggestedTable = await FindSuggestedTableAsync(
+                date,
+                time,
+                numberOfGuests,
+                cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "No table is available for the requested party and time slot.");
+            var pendingStatus = await _unitOfWork.Repository<ReservationStatus>()
+                .Entities
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    status => status.StatusName == PendingReservationStatus,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    $"Required {nameof(ReservationStatus)} '{PendingReservationStatus}' is not configured.");
+            var createdAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
+            var reservation = new Reservation
+            {
+                UserId = customerUserId,
+                Date = date,
+                Time = time,
+                GuestName = guestName,
+                GuestPhoneNumber = guestPhoneNumber,
+                NumberOfGuests = numberOfGuests,
+                Note = note,
+                StatusId = pendingStatus.StatusId,
+                TableId = suggestedTable.TableId,
+                CreatedAt = createdAtUtc
+            };
+
+            await _unitOfWork.Repository<Reservation>().InsertAsync(
+                reservation,
+                saveChanges: false);
+            await _notificationService.QueueForActiveStaffAsync(
+                new NotificationDraft(
+                    "New reservation request",
+                    $"{guestName} requested a table for {numberOfGuests} guest(s) on {date:dd/MM/yyyy} at {time:HH:mm}.",
+                    NotificationTypes.ReservationCreated),
+                cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return new ReservationDto(
+                reservation.ReservationId,
+                customerUserId,
+                date,
+                time,
+                numberOfGuests,
+                guestName,
+                guestPhoneNumber,
+                note,
+                pendingStatus.StatusName,
+                ReservationDurationMinutes,
+                startAt,
+                endAt,
+                suggestedTable,
+                createdAtUtc);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task<ReservationAvailabilityDto> GetAvailabilityAsync(
@@ -54,36 +208,11 @@ public sealed class ReservationService : IReservationService
         ArgumentNullException.ThrowIfNull(request);
 
         var (date, time, numberOfGuests, startAt, endAt) = ValidateRequest(request);
-        var endTime = time.AddMinutes(ReservationDurationMinutes);
-        var earliestOverlappingStart = time.AddMinutes(-ReservationDurationMinutes);
-
-        var conflictingTableIds = _unitOfWork.Repository<Reservation>()
-            .Entities
-            .AsNoTracking()
-            .Where(reservation =>
-                reservation.Date == date &&
-                BlockingReservationStatuses.Contains(reservation.Status.StatusName) &&
-                reservation.Time < endTime &&
-                reservation.Time > earliestOverlappingStart)
-            .Select(reservation => reservation.TableId)
-            .Distinct();
-
-        var suggestedTable = await _unitOfWork.Repository<RestaurantTable>()
-            .Entities
-            .AsNoTracking()
-            .Where(table =>
-                table.Capacity >= numberOfGuests &&
-                table.TableStatus.StatusName != MaintenanceTableStatus &&
-                !conflictingTableIds.Contains(table.TableId))
-            .OrderBy(table => table.Capacity)
-            .ThenBy(table => table.TableId)
-            .Select(table => new SuggestedTableDto(
-                table.TableId,
-                table.TableName,
-                table.Capacity,
-                table.Area,
-                table.Description))
-            .FirstOrDefaultAsync(cancellationToken);
+        var suggestedTable = await FindSuggestedTableAsync(
+            date,
+            time,
+            numberOfGuests,
+            cancellationToken);
 
         return suggestedTable is null
             ? new ReservationAvailabilityDto(
@@ -180,33 +309,30 @@ public sealed class ReservationService : IReservationService
                 if (string.Equals(
                         currentStatusName,
                         PendingReservationStatus,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    if (now >= startAt)
+                    {
+                        reservation.StatusId = expiredStatus.StatusId;
+                        reservation.Status = expiredStatus;
+                        reservation.UpdatedAt = now.UtcDateTime;
+                        markedExpired++;
+                    }
+
+                    continue;
+                }
+
+                if (string.Equals(
                         currentStatusName,
                         ConfirmedReservationStatus,
                         StringComparison.OrdinalIgnoreCase))
                 {
                     if (now >= holdUntil)
                     {
-                        var targetStatus = string.Equals(
-                            currentStatusName,
-                            ConfirmedReservationStatus,
-                            StringComparison.OrdinalIgnoreCase)
-                            ? noShowStatus
-                            : expiredStatus;
-
-                        reservation.StatusId = targetStatus.StatusId;
-                        reservation.Status = targetStatus;
+                        reservation.StatusId = noShowStatus.StatusId;
+                        reservation.Status = noShowStatus;
                         reservation.UpdatedAt = now.UtcDateTime;
-
-                        if (targetStatus.StatusId == noShowStatus.StatusId)
-                        {
-                            markedNoShow++;
-                        }
-                        else
-                        {
-                            markedExpired++;
-                        }
+                        markedNoShow++;
 
                         if (string.Equals(
                             reservation.Table.TableStatus.StatusName,
@@ -348,6 +474,50 @@ public sealed class ReservationService : IReservationService
             time.Minute,
             time.Second,
             VietnamUtcOffset);
+
+    private async Task<SuggestedTableDto?> FindSuggestedTableAsync(
+        DateOnly date,
+        TimeOnly time,
+        int numberOfGuests,
+        CancellationToken cancellationToken)
+    {
+        var endTime = time.AddMinutes(ReservationDurationMinutes);
+        var earliestOverlappingStart = time.AddMinutes(-ReservationDurationMinutes);
+        var conflictingTableIds = _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Where(reservation =>
+                reservation.Date == date &&
+                BlockingReservationStatuses.Contains(reservation.Status.StatusName) &&
+                reservation.Time < endTime &&
+                reservation.Time > earliestOverlappingStart)
+            .Select(reservation => reservation.TableId)
+            .Distinct();
+
+        return await _unitOfWork.Repository<RestaurantTable>()
+            .Entities
+            .AsNoTracking()
+            .Where(table =>
+                table.Capacity >= numberOfGuests &&
+                table.TableStatus.StatusName != MaintenanceTableStatus &&
+                !conflictingTableIds.Contains(table.TableId))
+            .OrderBy(table => table.Capacity)
+            .ThenBy(table => table.TableId)
+            .Select(table => new SuggestedTableDto(
+                table.TableId,
+                table.TableName,
+                table.Capacity,
+                table.Area,
+                table.Description))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static string RequiredTrimmed(string? value, string parameterName)
+        => string.IsNullOrWhiteSpace(value)
+            ? throw new ArgumentException(
+                $"{parameterName} is required.",
+                parameterName)
+            : value.Trim();
 
     private static TStatus GetRequiredStatus<TStatus>(
         IReadOnlyDictionary<string, TStatus> statuses,
