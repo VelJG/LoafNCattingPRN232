@@ -58,6 +58,18 @@ public sealed class AuthApiTests
     }
 
     [TestMethod]
+    public async Task AdminProducts_HeaderRoleWithoutJwt_CannotBypassAuthorization()
+    {
+        await using var factory = new AuthApiFactory();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-User-Role", "Admin");
+
+        var response = await client.GetAsync("/api/admin/products");
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
     public async Task CustomerToken_CannotCreateStaff()
     {
         await using var factory = new AuthApiFactory();

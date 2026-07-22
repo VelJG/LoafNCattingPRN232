@@ -1,12 +1,12 @@
 using LoafNCatting.Application.Contracts;
 using LoafNCatting.Application.Interfaces.Services;
-using LoafNCatting.WebApi.Filters;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LoafNCatting.WebApi.Controllers;
 
 [ApiController]
-[AdminOnly]
+[Authorize(Roles = "Admin,Staff")]
 [Route("api/admin/products")]
 public sealed class AdminProductsController : ControllerBase
 {
