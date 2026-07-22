@@ -1,19 +1,30 @@
 using System.Text;
 using LoafNCatting.Application.Contracts;
+using LoafNCatting.Application.Interfaces.Services;
 using LoafNCatting.Caching.Extensions;
 using LoafNCatting.Services.Extensions;
 using LoafNCatting.WebApi.BackgroundServices;
 using LoafNCatting.WebApi.OpenApi;
 using LoafNCatting.WebApi.Services;
+using LoafNCatting.WebApi.Hubs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddCacheServices();
 builder.Services.AddLoafNCattingDatabase(builder.Configuration);
 builder.Services.AddLoafNCattingServices();
+builder.Services.Replace(ServiceDescriptor.Scoped<
+    IMessageRealtimePublisher,
+    SignalRMessageRealtimePublisher>());
+builder.Services.Replace(ServiceDescriptor.Scoped<
+    INotificationRealtimePublisher,
+    SignalRNotificationRealtimePublisher>());
 builder.Services.AddHostedService<ReservationLifecycleBackgroundService>();
+builder.Services.AddSignalR();
 
 var jwtSection = builder.Configuration.GetSection(JwtSettings.SectionName);
 var jwtSettings = jwtSection.Get<JwtSettings>()
@@ -60,6 +71,23 @@ builder.Services
             NameClaimType = "name",
             RoleClaimType = AuthClaimTypes.Role
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    (context.HttpContext.Request.Path.StartsWithSegments(
+                        MessageHub.Route) ||
+                     context.HttpContext.Request.Path.StartsWithSegments(
+                        NotificationHub.Route)))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -73,7 +101,8 @@ builder.Services.AddCors(options =>
             "http://localhost:4173",
             "http://127.0.0.1:4173")
         .AllowAnyHeader()
-        .AllowAnyMethod());
+        .AllowAnyMethod()
+        .AllowCredentials());
 });
 
 if (builder.Environment.IsDevelopment())
@@ -105,6 +134,18 @@ app.UseCors("FrontendDev");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<MessageHub>(MessageHub.Route, options =>
+{
+    options.Transports =
+        HttpTransportType.WebSockets |
+        HttpTransportType.LongPolling;
+});
+app.MapHub<NotificationHub>(NotificationHub.Route, options =>
+{
+    options.Transports =
+        HttpTransportType.WebSockets |
+        HttpTransportType.LongPolling;
+});
 app.Run();
 
 public partial class Program;

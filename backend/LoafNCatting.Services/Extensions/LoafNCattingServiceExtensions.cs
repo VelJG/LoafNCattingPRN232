@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LoafNCatting.Services.Extensions;
 
@@ -48,6 +49,9 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IReservationService, ReservationService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IMessageService, MessageService>();
+        services.TryAddScoped<IMessageRealtimePublisher, NullMessageRealtimePublisher>();
+        services.TryAddScoped<INotificationRealtimePublisher, NullNotificationRealtimePublisher>();
         services.AddSingleton(TimeProvider.System);
 
         return services;
