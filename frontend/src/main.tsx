@@ -9,6 +9,7 @@ import './styles/v2-base.css'
 import './styles/v2-landing.css'
 import './styles/v2-auth.css'
 import './styles/v2-customer.css'
+import './styles/v2-admin.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
