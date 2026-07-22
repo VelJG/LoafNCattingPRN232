@@ -3,6 +3,7 @@ using LoafNCatting.Application.Interfaces.Services;
 using LoafNCatting.Entity.Models;
 using LoafNCatting.Services.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LoafNCatting.Tests;
 
@@ -157,7 +158,9 @@ public sealed class MessageServiceTests
         var service = new MessageService(
             data.UnitOfWork,
             new ThrowingNotificationService(),
-            new TestTimeProvider(MessageTime));
+            new NullMessageRealtimePublisher(),
+            new TestTimeProvider(MessageTime),
+            NullLogger<MessageService>.Instance);
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.SendByCustomerAsync(
@@ -167,6 +170,168 @@ public sealed class MessageServiceTests
         Assert.AreEqual(0, await data.DbContext.Conversations.CountAsync());
         Assert.AreEqual(0, await data.DbContext.Messages.CountAsync());
         Assert.AreEqual(0, await data.DbContext.Notifications.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task GetStoreConversationsAsync_ReturnsSharedInboxNewestFirstWithUnreadCount()
+    {
+        await using var data = await CreateDataAsync();
+        data.DbContext.Conversations.AddRange(
+            Conversation(1, customerUserId: 10),
+            new Conversation
+            {
+                ConversationId = 2,
+                CustomerUserId = 11,
+                StaffUserId = null,
+                CreatedAt = MessageTime.AddMinutes(1).UtcDateTime,
+                UpdatedAt = MessageTime.AddMinutes(3).UtcDateTime
+            });
+        data.DbContext.Messages.AddRange(
+            Message(1, 1, senderUserId: 10, minute: 1, "Customer message"),
+            Message(2, 1, senderUserId: 20, minute: 2, "Store reply"),
+            Message(3, 2, senderUserId: 11, minute: 3, "Newest message"));
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+
+        var result = await service.GetStoreConversationsAsync(20);
+
+        CollectionAssert.AreEqual(
+            new[] { 2, 1 },
+            result.Select(conversation => conversation.ConversationId).ToArray());
+        Assert.AreEqual("Newest message", result[0].LastMessageContent);
+        Assert.AreEqual(1, result[0].UnreadCustomerMessageCount);
+        Assert.AreEqual("Store reply", result[1].LastMessageContent);
+        Assert.AreEqual("Staff", result[1].LastMessageSenderRole);
+        Assert.AreEqual(1, result[1].UnreadCustomerMessageCount);
+        Assert.HasCount(0, data.DbContext.ChangeTracker.Entries().ToList());
+    }
+
+    [TestMethod]
+    public async Task SendByStoreAsync_CreatesReplyCustomerNotificationAndRealtimeEvent()
+    {
+        await using var data = await CreateDataAsync();
+        data.DbContext.Conversations.Add(Conversation(1, customerUserId: 10));
+        await data.DbContext.SaveChangesAsync();
+        var publisher = new RecordingMessageRealtimePublisher();
+        var service = CreateService(data, publisher: publisher);
+
+        var result = await service.SendByStoreAsync(
+            20,
+            1,
+            new SendMessageRequest { Content = "  We can help  " });
+
+        Assert.AreEqual(20, result.SenderUserId);
+        Assert.AreEqual("Staff", result.SenderRole);
+        Assert.AreEqual("We can help", result.Content);
+        var message = await data.DbContext.Messages.AsNoTracking().SingleAsync();
+        Assert.AreEqual(20, message.SenderUserId);
+        Assert.IsFalse(message.IsRead);
+        var notification = await data.DbContext.Notifications
+            .AsNoTracking()
+            .SingleAsync();
+        Assert.AreEqual(10, notification.UserId);
+        Assert.AreEqual(NotificationTypes.NewStaffReply, notification.Type);
+        Assert.HasCount(1, publisher.MessageEvents);
+        Assert.AreEqual(10, publisher.MessageEvents[0].CustomerUserId);
+        Assert.AreEqual(result.MessageId, publisher.MessageEvents[0].Message.MessageId);
+    }
+
+    [TestMethod]
+    public async Task MarkRead_UpdatesOnlyMessagesSentByTheOtherSide()
+    {
+        await using var data = await CreateDataAsync();
+        data.DbContext.Conversations.Add(Conversation(1, customerUserId: 10));
+        data.DbContext.Messages.AddRange(
+            Message(1, 1, senderUserId: 10, minute: 1, "Customer message"),
+            Message(2, 1, senderUserId: 20, minute: 2, "Store reply"));
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var publisher = new RecordingMessageRealtimePublisher();
+        var service = CreateService(data, publisher: publisher);
+
+        var staffRead = await service.MarkStoreMessagesAsReadAsync(20, 1);
+
+        Assert.AreEqual(1, staffRead.UpdatedCount);
+        Assert.IsTrue(await IsMessageReadAsync(data, 1));
+        Assert.IsFalse(await IsMessageReadAsync(data, 2));
+
+        var customerRead = await service.MarkMineAsReadAsync(10);
+
+        Assert.AreEqual(1, customerRead.UpdatedCount);
+        Assert.IsTrue(await IsMessageReadAsync(data, 2));
+        Assert.HasCount(2, publisher.ReadEvents);
+        Assert.AreEqual("Staff", publisher.ReadEvents[0].ReadEvent.ReaderRole);
+        Assert.AreEqual("Customer", publisher.ReadEvents[1].ReadEvent.ReaderRole);
+    }
+
+    [TestMethod]
+    public async Task StoreOperations_InvalidOperatorOrConversation_AreRejected()
+    {
+        await using var data = await CreateDataAsync();
+        var service = CreateService(data);
+
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() =>
+            service.GetStoreConversationsAsync(10));
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            service.GetStoreMessagesAsync(20, 999));
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            service.SendByStoreAsync(
+                20,
+                999,
+                new SendMessageRequest { Content = "Hello" }));
+    }
+
+    [TestMethod]
+    public async Task SendByStoreAsync_WhenNotificationFails_RollsBackReplyAndTimestamp()
+    {
+        await using var data = await CreateDataAsync();
+        var originalUpdatedAt = MessageTime.AddMinutes(-5).UtcDateTime;
+        var conversation = Conversation(1, customerUserId: 10);
+        conversation.UpdatedAt = originalUpdatedAt;
+        data.DbContext.Conversations.Add(conversation);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = new MessageService(
+            data.UnitOfWork,
+            new ThrowingNotificationService(),
+            new NullMessageRealtimePublisher(),
+            new TestTimeProvider(MessageTime),
+            NullLogger<MessageService>.Instance);
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            service.SendByStoreAsync(
+                20,
+                1,
+                new SendMessageRequest { Content = "Hello" }));
+
+        Assert.AreEqual(0, await data.DbContext.Messages.CountAsync());
+        Assert.AreEqual(
+            originalUpdatedAt,
+            await data.DbContext.Conversations
+                .Select(current => current.UpdatedAt)
+                .SingleAsync());
+    }
+
+    [TestMethod]
+    public async Task SendByCustomerAsync_WhenRealtimeFails_MessageRemainsCommitted()
+    {
+        await using var data = await CreateDataAsync();
+        var clock = new TestTimeProvider(MessageTime);
+        var service = new MessageService(
+            data.UnitOfWork,
+            new NotificationService(data.UnitOfWork, clock),
+            new ThrowingMessageRealtimePublisher(),
+            clock,
+            NullLogger<MessageService>.Instance);
+
+        var result = await service.SendByCustomerAsync(
+            10,
+            new SendMessageRequest { Content = "Hello" });
+
+        Assert.IsTrue(result.MessageId > 0);
+        Assert.AreEqual(1, await data.DbContext.Messages.CountAsync());
+        Assert.AreEqual(1, await data.DbContext.Notifications.CountAsync());
     }
 
     private static async Task<TestDataContext> CreateDataAsync()
@@ -183,14 +348,26 @@ public sealed class MessageServiceTests
 
     private static MessageService CreateService(
         TestDataContext data,
-        TestTimeProvider? clock = null)
+        TestTimeProvider? clock = null,
+        IMessageRealtimePublisher? publisher = null)
     {
         clock ??= new TestTimeProvider(MessageTime);
         return new MessageService(
             data.UnitOfWork,
             new NotificationService(data.UnitOfWork, clock),
-            clock);
+            publisher ?? new NullMessageRealtimePublisher(),
+            clock,
+            NullLogger<MessageService>.Instance);
     }
+
+    private static Task<bool> IsMessageReadAsync(
+        TestDataContext data,
+        int messageId)
+        => data.DbContext.Messages
+            .AsNoTracking()
+            .Where(message => message.MessageId == messageId)
+            .Select(message => message.IsRead)
+            .SingleAsync();
 
     private static void AddUser(
         TestDataContext data,
@@ -264,7 +441,7 @@ public sealed class MessageServiceTests
             int userId,
             NotificationDraft draft,
             CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+            => throw new InvalidOperationException("Notification failure.");
 
         public Task<bool> QueueForUserIfMissingAsync(
             int userId,
@@ -281,5 +458,44 @@ public sealed class MessageServiceTests
             NotificationDraft draft,
             CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingMessageRealtimePublisher : IMessageRealtimePublisher
+    {
+        public List<MessageCreatedRealtimeDto> MessageEvents { get; } = [];
+
+        public List<(int CustomerUserId, MessagesReadRealtimeDto ReadEvent)> ReadEvents
+            { get; } = [];
+
+        public Task PublishMessageCreatedAsync(
+            MessageCreatedRealtimeDto messageEvent,
+            CancellationToken cancellationToken = default)
+        {
+            MessageEvents.Add(messageEvent);
+            return Task.CompletedTask;
+        }
+
+        public Task PublishMessagesReadAsync(
+            int customerUserId,
+            MessagesReadRealtimeDto readEvent,
+            CancellationToken cancellationToken = default)
+        {
+            ReadEvents.Add((customerUserId, readEvent));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingMessageRealtimePublisher : IMessageRealtimePublisher
+    {
+        public Task PublishMessageCreatedAsync(
+            MessageCreatedRealtimeDto messageEvent,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Realtime failure.");
+
+        public Task PublishMessagesReadAsync(
+            int customerUserId,
+            MessagesReadRealtimeDto readEvent,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Realtime failure.");
     }
 }

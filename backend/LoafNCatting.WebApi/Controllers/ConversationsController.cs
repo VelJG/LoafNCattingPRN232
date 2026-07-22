@@ -63,6 +63,19 @@ public sealed class ConversationsController : ApiControllerBase
             message => StatusCode(StatusCodes.Status201Created, message));
     }
 
+    [HttpPatch("mine/messages/read")]
+    public Task<IActionResult> MarkMineAsRead(CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _messageService.MarkMineAsReadAsync(
+            customerUserId,
+            cancellationToken));
+    }
+
     private bool TryGetCustomerUserId(out int customerUserId)
     {
         var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
