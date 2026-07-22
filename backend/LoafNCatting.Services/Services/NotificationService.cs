@@ -21,6 +21,114 @@ public sealed class NotificationService : INotificationService
         _timeProvider = timeProvider;
     }
 
+    public async Task<IReadOnlyList<NotificationDto>> GetForUserAsync(
+        int userId,
+        bool? isRead = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(userId);
+        await EnsureActiveUserAsync(userId, cancellationToken);
+
+        var query = _unitOfWork.Repository<Notification>()
+            .Entities
+            .AsNoTracking()
+            .Where(notification => notification.UserId == userId);
+        if (isRead.HasValue)
+        {
+            query = query.Where(notification => notification.IsRead == isRead.Value);
+        }
+
+        return await query
+            .OrderByDescending(notification => notification.CreatedAt)
+            .ThenByDescending(notification => notification.NotificationId)
+            .Select(notification => new NotificationDto(
+                notification.NotificationId,
+                notification.Title,
+                notification.Content,
+                notification.Type,
+                notification.IsRead,
+                notification.CreatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<UnreadNotificationCountDto> GetUnreadCountAsync(
+        int userId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(userId);
+        await EnsureActiveUserAsync(userId, cancellationToken);
+
+        var count = await _unitOfWork.Repository<Notification>()
+            .Entities
+            .AsNoTracking()
+            .CountAsync(
+                notification =>
+                    notification.UserId == userId &&
+                    !notification.IsRead,
+                cancellationToken);
+        return new UnreadNotificationCountDto(count);
+    }
+
+    public async Task<NotificationDto> MarkAsReadAsync(
+        int userId,
+        int notificationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(userId);
+        ValidateNotificationId(notificationId);
+        await EnsureActiveUserAsync(userId, cancellationToken);
+
+        var repository = _unitOfWork.Repository<Notification>();
+        var notification = await repository
+            .Entities
+            .SingleOrDefaultAsync(
+                current =>
+                    current.NotificationId == notificationId &&
+                    current.UserId == userId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Notification was not found.");
+
+        if (!notification.IsRead)
+        {
+            notification.IsRead = true;
+            await repository.UpdateAsync(notification, saveChanges: false);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return ToDto(notification);
+    }
+
+    public async Task<MarkNotificationsReadResultDto> MarkAllAsReadAsync(
+        int userId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(userId);
+        await EnsureActiveUserAsync(userId, cancellationToken);
+
+        var repository = _unitOfWork.Repository<Notification>();
+        var unreadNotifications = await repository
+            .Entities
+            .Where(notification =>
+                notification.UserId == userId &&
+                !notification.IsRead)
+            .ToListAsync(cancellationToken);
+        if (unreadNotifications.Count == 0)
+        {
+            return new MarkNotificationsReadResultDto(0);
+        }
+
+        foreach (var notification in unreadNotifications)
+        {
+            notification.IsRead = true;
+        }
+
+        await repository.UpdateRangeAsync(
+            unreadNotifications,
+            saveChanges: false);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        return new MarkNotificationsReadResultDto(unreadNotifications.Count);
+    }
+
     public async Task QueueForUserAsync(
         int userId,
         NotificationDraft draft,
@@ -91,6 +199,52 @@ public sealed class NotificationService : INotificationService
             IsRead = false,
             CreatedAt = _timeProvider.GetUtcNow().UtcDateTime
         };
+
+    private async Task EnsureActiveUserAsync(
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var isActive = await _unitOfWork.Repository<User>()
+            .Entities
+            .AsNoTracking()
+            .AnyAsync(
+                user => user.UserId == userId && user.IsActive,
+                cancellationToken);
+        if (!isActive)
+        {
+            throw new UnauthorizedAccessException(
+                "The authenticated user account is not active or valid.");
+        }
+    }
+
+    private static NotificationDto ToDto(Notification notification)
+        => new(
+            notification.NotificationId,
+            notification.Title,
+            notification.Content,
+            notification.Type,
+            notification.IsRead,
+            notification.CreatedAt);
+
+    private static void ValidateUserId(int userId)
+    {
+        if (userId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(userId),
+                "Notification user id must be greater than zero.");
+        }
+    }
+
+    private static void ValidateNotificationId(int notificationId)
+    {
+        if (notificationId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(notificationId),
+                "Notification id must be greater than zero.");
+        }
+    }
 
     private static NotificationDraft NormalizeDraft(NotificationDraft draft)
     {

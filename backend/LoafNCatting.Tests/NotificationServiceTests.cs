@@ -12,6 +12,123 @@ public sealed class NotificationServiceTests
         new(2026, 7, 22, 3, 15, 0, TimeSpan.Zero);
 
     [TestMethod]
+    public async Task GetForUserAsync_ReturnsOwnedNotificationsNewestFirstAndSupportsReadFilter()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        AddUser(data, userId: 11, roleId: 3, isActive: true);
+        AddNotification(data, 1, 10, isRead: false, createdMinute: 1);
+        AddNotification(data, 2, 10, isRead: true, createdMinute: 2);
+        AddNotification(data, 3, 10, isRead: false, createdMinute: 3);
+        AddNotification(data, 4, 11, isRead: false, createdMinute: 4);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+
+        var all = await service.GetForUserAsync(10);
+        var unread = await service.GetForUserAsync(10, isRead: false);
+
+        CollectionAssert.AreEqual(
+            new[] { 3, 2, 1 },
+            all.Select(notification => notification.NotificationId).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { 3, 1 },
+            unread.Select(notification => notification.NotificationId).ToArray());
+        Assert.IsTrue(all.All(notification => notification.NotificationId != 4));
+        Assert.HasCount(0, data.DbContext.ChangeTracker.Entries().ToList());
+    }
+
+    [TestMethod]
+    public async Task GetUnreadCountAsync_CountsOnlyOwnedUnreadNotifications()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        AddUser(data, userId: 11, roleId: 2, isActive: true);
+        AddNotification(data, 1, 10, isRead: false, createdMinute: 1);
+        AddNotification(data, 2, 10, isRead: true, createdMinute: 2);
+        AddNotification(data, 3, 11, isRead: false, createdMinute: 3);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+
+        var result = await service.GetUnreadCountAsync(10);
+
+        Assert.AreEqual(1, result.Count);
+    }
+
+    [TestMethod]
+    public async Task MarkAsReadAsync_OwnedNotification_PersistsReadState()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        AddNotification(data, 1, 10, isRead: false, createdMinute: 1);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+
+        var result = await service.MarkAsReadAsync(10, 1);
+
+        Assert.IsTrue(result.IsRead);
+        Assert.IsTrue(await data.DbContext.Notifications
+            .Where(notification => notification.NotificationId == 1)
+            .Select(notification => notification.IsRead)
+            .SingleAsync());
+    }
+
+    [TestMethod]
+    public async Task MarkAsReadAsync_AnotherUsersNotification_ReturnsNotFoundWithoutChangingIt()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        AddUser(data, userId: 11, roleId: 3, isActive: true);
+        AddNotification(data, 1, 11, isRead: false, createdMinute: 1);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+
+        await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
+            service.MarkAsReadAsync(10, 1));
+
+        Assert.IsFalse(await data.DbContext.Notifications
+            .Where(notification => notification.NotificationId == 1)
+            .Select(notification => notification.IsRead)
+            .SingleAsync());
+    }
+
+    [TestMethod]
+    public async Task MarkAllAsReadAsync_UpdatesOnlyOwnedUnreadNotificationsAndIsIdempotent()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        AddUser(data, userId: 11, roleId: 2, isActive: true);
+        AddNotification(data, 1, 10, isRead: false, createdMinute: 1);
+        AddNotification(data, 2, 10, isRead: true, createdMinute: 2);
+        AddNotification(data, 3, 11, isRead: false, createdMinute: 3);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+
+        var first = await service.MarkAllAsReadAsync(10);
+        var second = await service.MarkAllAsReadAsync(10);
+
+        Assert.AreEqual(1, first.UpdatedCount);
+        Assert.AreEqual(0, second.UpdatedCount);
+        Assert.IsTrue(await data.DbContext.Notifications
+            .Where(notification => notification.NotificationId == 1)
+            .Select(notification => notification.IsRead)
+            .SingleAsync());
+        Assert.IsFalse(await data.DbContext.Notifications
+            .Where(notification => notification.NotificationId == 3)
+            .Select(notification => notification.IsRead)
+            .SingleAsync());
+    }
+
+    [TestMethod]
     public async Task QueueForUserAsync_AddsUnreadNotificationWithoutCommitting()
     {
         await using var data = new TestDataContext();
@@ -179,5 +296,22 @@ public sealed class NotificationServiceTests
             IsActive = isActive,
             CreatedAt = DateTime.UtcNow,
             IsEmailVerified = false
+        });
+
+    private static void AddNotification(
+        TestDataContext data,
+        int notificationId,
+        int userId,
+        bool isRead,
+        int createdMinute)
+        => data.DbContext.Notifications.Add(new Notification
+        {
+            NotificationId = notificationId,
+            UserId = userId,
+            Title = $"Notification {notificationId}",
+            Content = $"Content {notificationId}",
+            Type = NotificationTypes.ReservationConfirmed,
+            IsRead = isRead,
+            CreatedAt = new DateTime(2026, 7, 22, 3, createdMinute, 0, DateTimeKind.Utc)
         });
 }

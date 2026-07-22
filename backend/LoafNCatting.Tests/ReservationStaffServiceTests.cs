@@ -314,6 +314,28 @@ public sealed class ReservationStaffServiceTests
 
     private sealed class ThrowingNotificationService : INotificationService
     {
+        public Task<IReadOnlyList<NotificationDto>> GetForUserAsync(
+            int userId,
+            bool? isRead = null,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<UnreadNotificationCountDto> GetUnreadCountAsync(
+            int userId,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<NotificationDto> MarkAsReadAsync(
+            int userId,
+            int notificationId,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<MarkNotificationsReadResultDto> MarkAllAsReadAsync(
+            int userId,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
         public Task QueueForUserAsync(
             int userId,
             NotificationDraft draft,

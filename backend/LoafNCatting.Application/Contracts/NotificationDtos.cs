@@ -5,6 +5,18 @@ public sealed record NotificationDraft(
     string Content,
     string Type);
 
+public sealed record NotificationDto(
+    int NotificationId,
+    string Title,
+    string Content,
+    string? Type,
+    bool IsRead,
+    DateTime CreatedAtUtc);
+
+public sealed record UnreadNotificationCountDto(int Count);
+
+public sealed record MarkNotificationsReadResultDto(int UpdatedCount);
+
 public static class NotificationTypes
 {
     public const string ReservationCreated = "ReservationCreated";
