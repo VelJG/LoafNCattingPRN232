@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MdAdd, MdArrowForward, MdLocalCafe, MdPets, MdSearch } from 'react-icons/md'
-import { categories } from '../../data/mockData'
 import { catalogRepository } from '../../services/catalogRepository'
 import { useCart } from '../../state/CartContext'
-import type { Product } from '../../types/models'
+import type { Category, Product } from '../../types/models'
 import { formatVnd } from '../../utils/format'
 
 export function MenuPage() {
   const [keyword, setKeyword] = useState('')
-  const [category, setCategory] = useState<string>('')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [category, setCategory] = useState<number | undefined>(undefined)
   const [items, setItems] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const cart = useCart()
+
+  useEffect(() => {
+    catalogRepository.listCategories().then(setCategories).catch(() => setCategories([]))
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -23,7 +27,10 @@ export function MenuPage() {
         if (alive) setItems(result)
       })
       .catch((reason: unknown) => {
-        if (alive) setError(reason instanceof Error ? reason.message : 'Cannot load menu from API')
+        if (alive) {
+          setItems([])
+          setError(reason instanceof Error ? reason.message : 'Cannot load menu from API')
+        }
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -60,7 +67,7 @@ export function MenuPage() {
         </div>
 
         <div className="category-row" aria-label="Menu categories">
-          <button className={!category ? 'chip chip--active' : 'chip'} type="button" onClick={() => setCategory('')}>All menu</button>
+          <button className={!category ? 'chip chip--active' : 'chip'} type="button" onClick={() => setCategory(undefined)}>All menu</button>
           {categories.map((item) => <button className={category === item.id ? 'chip chip--active' : 'chip'} type="button" key={item.id} onClick={() => setCategory(item.id)}>{item.name}</button>)}
         </div>
 

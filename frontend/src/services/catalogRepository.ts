@@ -1,12 +1,19 @@
-import { cafeTables, cats, dashboardMetrics, recentOrders } from '../data/mockData'
-import type { CafeTable, CatProfile, DashboardMetric, Product, RecentOrder } from '../types/models'
+import { cafeTables, dashboardMetrics, recentOrders } from '../data/mockData'
+import type { CafeTable, CatProfile, Category, DashboardMetric, Product, RecentOrder } from '../types/models'
 
 const pause = (milliseconds = 220) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds))
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
+
+const fallbackProductImage =
+  'https://images.unsplash.com/photo-1684246524496-180d5b07ee7e?auto=format&fit=crop&w=1400&q=86'
+const fallbackCatImage =
+  'https://images.unsplash.com/photo-1495360010541-f48722b34f7d?auto=format&fit=crop&w=900&q=82'
+
 export interface ProductQuery {
   keyword?: string
-  categoryId?: string
+  categoryId?: number
 }
 
 export interface AdminProductInput {
@@ -21,6 +28,7 @@ export interface AdminProductInput {
 }
 
 export interface CatalogRepository {
+  listCategories(): Promise<Category[]>
   listProducts(query?: ProductQuery): Promise<Product[]>
   createProduct(product: AdminProductInput): Promise<Product>
   updateProduct(productId: number, product: AdminProductInput): Promise<Product>
@@ -28,6 +36,12 @@ export interface CatalogRepository {
   listCats(): Promise<CatProfile[]>
   listAvailableTables(guests: number): Promise<CafeTable[]>
   getDashboard(): Promise<{ metrics: DashboardMetric[]; orders: RecentOrder[] }>
+}
+
+interface ApiCategory {
+  categoryId: number
+  name: string
+  description?: string | null
 }
 
 interface ApiProduct {
@@ -41,33 +55,49 @@ interface ApiProduct {
   categoryId: number
   categoryName: string
   isAvailable: boolean
+  canOrder?: boolean
 }
 
-const categoryKey = (name: string) =>
-  name.toLowerCase().includes('coffee') ? 'coffee'
-    : name.toLowerCase().includes('tea') || name.toLowerCase().includes('matcha') ? 'tea'
-      : name.toLowerCase().includes('cake') || name.toLowerCase().includes('bak') ? 'cake'
-        : 'combo'
+interface ApiCat {
+  catId: number
+  name: string
+  age?: number | null
+  genderName?: string | null
+  breed?: string | null
+  picture?: string | null
+  description?: string | null
+  friendlinessRating?: number | null
+  cutenessRating?: number | null
+  playfulnessRating?: number | null
+  statusName: string
+}
 
-const fallbackImage =
-  'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=82'
-
-const toProduct = (product: ApiProduct): Product => ({
-  id: product.productId,
-  name: product.name,
-  description: product.description ?? '',
-  categoryId: categoryKey(product.categoryName),
-  categoryName: product.categoryName,
-  apiCategoryId: product.categoryId,
-  price: product.price,
-  discountPrice: product.discountPrice ?? undefined,
-  stock: product.unitInStock,
-  available: product.isAvailable,
-  imageUrl: product.picture || fallbackImage,
+const toProduct = (item: ApiProduct): Product => ({
+  id: item.productId,
+  name: item.name,
+  description: item.description ?? '',
+  categoryId: item.categoryId,
+  categoryName: item.categoryName,
+  apiCategoryId: item.categoryId,
+  price: item.price,
+  discountPrice: item.discountPrice ?? undefined,
+  stock: item.unitInStock,
+  available: item.canOrder ?? item.isAvailable,
+  imageUrl: item.picture || fallbackProductImage,
 })
 
-const api = async <T>(path: string, init: RequestInit = {}) => {
-  const response = await fetch(path, {
+const readJson = async <T>(path: string, init: RequestInit = {}) => {
+  const response = await fetch(`${apiBaseUrl}${path}`, init)
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || `Request failed: ${response.status} ${response.statusText}`)
+  }
+  if (response.status === 204) return undefined as T
+  return response.json() as Promise<T>
+}
+
+const writeAdminJson = async <T>(path: string, init: RequestInit = {}) =>
+  readJson<T>(path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -76,30 +106,27 @@ const api = async <T>(path: string, init: RequestInit = {}) => {
     },
   })
 
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with ${response.status}`)
-  }
-
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return response.json() as Promise<T>
-}
-
 class ApiCatalogRepository implements CatalogRepository {
-  async listProducts(query: ProductQuery = {}) {
-    const params = new URLSearchParams()
-    if (query.keyword?.trim()) params.set('search', query.keyword.trim())
+  async listCategories() {
+    const items = await readJson<ApiCategory[]>('/categories')
+    return items.map((item) => ({
+      id: item.categoryId,
+      name: item.name,
+      description: item.description ?? undefined,
+    }))
+  }
 
-    const apiProducts = await api<ApiProduct[]>(`/api/admin/products?${params}`)
-    const mapped = apiProducts.map(toProduct)
-    return query.categoryId ? mapped.filter((product) => product.categoryId === query.categoryId) : mapped
+  async listProducts(query: ProductQuery = {}) {
+    const searchParams = new URLSearchParams()
+    if (query.keyword?.trim()) searchParams.set('search', query.keyword.trim())
+    if (query.categoryId) searchParams.set('categoryId', String(query.categoryId))
+    const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : ''
+    const items = await readJson<ApiProduct[]>(`/products${suffix}`)
+    return items.map(toProduct)
   }
 
   async createProduct(product: AdminProductInput) {
-    const created = await api<ApiProduct>('/api/admin/products', {
+    const created = await writeAdminJson<ApiProduct>('/admin/products', {
       method: 'POST',
       body: JSON.stringify(product),
     })
@@ -107,7 +134,7 @@ class ApiCatalogRepository implements CatalogRepository {
   }
 
   async updateProduct(productId: number, product: AdminProductInput) {
-    const updated = await api<ApiProduct>(`/api/admin/products/${productId}`, {
+    const updated = await writeAdminJson<ApiProduct>(`/admin/products/${productId}`, {
       method: 'PUT',
       body: JSON.stringify(product),
     })
@@ -115,12 +142,24 @@ class ApiCatalogRepository implements CatalogRepository {
   }
 
   async deleteProduct(productId: number) {
-    await api<void>(`/api/admin/products/${productId}`, { method: 'DELETE' })
+    await writeAdminJson<void>(`/admin/products/${productId}`, { method: 'DELETE' })
   }
 
   async listCats() {
-    await pause()
-    return cats
+    const items = await readJson<ApiCat[]>('/cats')
+    return items.map((item) => ({
+      id: item.catId,
+      name: item.name,
+      breed: item.breed ?? 'Unknown breed',
+      age: item.age ?? undefined,
+      gender: item.genderName ?? undefined,
+      status: item.statusName,
+      description: item.description ?? '',
+      friendliness: item.friendlinessRating ?? undefined,
+      playfulness: item.playfulnessRating ?? undefined,
+      cuteness: item.cutenessRating ?? undefined,
+      imageUrl: item.picture || fallbackCatImage,
+    }))
   }
 
   async listAvailableTables(guests: number) {
@@ -144,5 +183,3 @@ class ApiCatalogRepository implements CatalogRepository {
 }
 
 export const catalogRepository: CatalogRepository = new ApiCatalogRepository()
-
-
