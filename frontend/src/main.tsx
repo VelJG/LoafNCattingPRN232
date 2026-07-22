@@ -6,6 +6,7 @@ import { CartProvider } from './state/CartContext'
 import './styles.css'
 import './styles/v2-tokens.css'
 import './styles/v2-base.css'
+import './styles/v2-landing.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
