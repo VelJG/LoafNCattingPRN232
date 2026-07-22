@@ -1,47 +1,99 @@
 import { useState, type FormEvent } from 'react'
-import { MdCalendarMonth, MdCheckCircle, MdGroups, MdPets, MdSearch, MdTableRestaurant } from 'react-icons/md'
-import { catalogRepository } from '../../services/catalogRepository'
-import type { CafeTable } from '../../types/models'
+import { MdCalendarToday, MdGroup, MdSchedule } from 'react-icons/md'
+import { useAuth } from '../../features/auth/useAuth'
+import {
+  createReservation,
+  getReservationAvailability,
+} from '../../features/reservations/reservationApi'
+import { ReservationTableChoice } from '../../features/reservations/ReservationTableChoice'
+
+function defaultDate() {
+  const date = new Date()
+  date.setDate(date.getDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+function displayDate(value: string) {
+  const [year, month, day] = value.split('-')
+  return year && month && day ? `${day}/${month}/${year}` : value
+}
 
 export function ReservationPage() {
-  const [guests, setGuests] = useState(2)
-  const [tables, setTables] = useState<CafeTable[]>([])
-  const [selectedTable, setSelectedTable] = useState<number | null>(null)
-  const [searched, setSearched] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
+  const auth = useAuth()
+  const [date, setDate] = useState(defaultDate)
+  const [time, setTime] = useState('18:00')
+  const [guests, setGuests] = useState(4)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
 
-  const findTables = async (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    setTables(await catalogRepository.listAvailableTables(guests))
-    setSelectedTable(null)
-    setSearched(true)
-    setConfirmed(false)
+    const session = auth.session
+    if (!session) return
+    setSubmitting(true)
+    setError('')
+    setSuccess('')
+    try {
+      const input = { date, time, numberOfGuests: guests }
+      const availability = await getReservationAvailability(input)
+      if (!availability.isAvailable || !availability.suggestedTable) {
+        setError(availability.reason || 'Quán chưa còn bàn phù hợp trong khung giờ này.')
+        return
+      }
+      const reservation = await createReservation({
+        ...input,
+        guestName: session.user.name,
+        guestPhoneNumber: session.user.phoneNumber,
+        note: null,
+      }, session.token)
+      setSuccess(`Đã giữ ${reservation.table.tableName} cho bạn.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không thể đặt bàn. Vui lòng thử lại.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
-    <section className="content-page page-width reservation-page">
-      <div className="reservation-intro"><span className="hero-kicker hero-kicker--orange"><MdPets />Plan a cozy visit</span><h1>Your table, your time, your favorite cats.</h1><p>Choose a date and party size. We’ll show tables that fit your visit.</p></div>
-      <div className="reservation-layout">
-        <form className="form-card" onSubmit={findTables}>
-          <div className="form-card__heading"><span className="icon-badge"><MdCalendarMonth /></span><div><h2>Visit details</h2><p>Mock availability search</p></div></div>
-          <div className="form-grid">
-            <label><span>Date</span><input type="date" defaultValue="2026-07-12" required /></label>
-            <label><span>Time</span><input type="time" defaultValue="18:00" required /></label>
-            <label><span>Guests</span><div className="input-with-icon"><MdGroups /><input type="number" min="1" max="8" value={guests} onChange={(event) => setGuests(Number(event.target.value))} /></div></label>
-            <label><span>Contact phone</span><input type="tel" defaultValue="090 123 4567" required /></label>
-          </div>
-          <label><span>Note for the cafe</span><textarea rows={3} placeholder="Birthday, preferred area, accessibility needs..." /></label>
-          <button className="button button--primary button--full" type="submit"><MdSearch />Find available tables</button>
-        </form>
-
-        <div className="availability-panel">
-          <div className="form-card__heading"><span className="icon-badge"><MdTableRestaurant /></span><div><h2>Available tables</h2><p>{searched ? `${tables.length} good matches` : 'Complete your visit details first'}</p></div></div>
-          {!searched ? <div className="availability-placeholder"><MdTableRestaurant /><p>Available tables will appear here.</p></div> : tables.map((table) => <button className={selectedTable === table.id ? 'table-option table-option--selected' : 'table-option'} type="button" key={table.id} onClick={() => { setSelectedTable(table.id); setConfirmed(false) }}><span className="icon-badge"><MdTableRestaurant /></span><span><strong>{table.name}</strong><small>{table.area} · up to {table.capacity} guests</small></span>{selectedTable === table.id && <MdCheckCircle />}</button>)}
-          {searched && tables.length === 0 && <div className="availability-placeholder"><MdTableRestaurant /><p>No suitable table was found for this party size.</p></div>}
-          {selectedTable && <button className="button button--primary button--full" type="button" onClick={() => setConfirmed(true)}>Confirm reservation</button>}
-          {confirmed && <div className="success-message"><MdCheckCircle /><div><strong>Table held successfully</strong><span>This is a mock success state for the frontend flow.</span></div></div>}
-        </div>
+    <section className="customer-v2-page reservation-v2-page">
+      <div className="reservation-v2-hero">
+        <p>ĐẶT CHỖ</p>
+        <h1>Giữ một chỗ ngồi <em>bên cửa sổ.</em></h1>
+        <span>Chọn chỗ ngồi ưng ý trước khi quán đông khách.</span>
       </div>
+      <form className="reservation-v2-form" onSubmit={submit}>
+        <div className="reservation-v2-fields">
+          <label className="reservation-v2-pill">
+            <MdCalendarToday aria-hidden="true" />
+            <span className="reservation-v2-value">{displayDate(date)}</span>
+            <input className="reservation-v2-native-input" aria-label="Ngày đặt bàn" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+          </label>
+          <label className="reservation-v2-pill">
+            <MdSchedule aria-hidden="true" />
+            <span className="reservation-v2-value">{time}</span>
+            <input className="reservation-v2-native-input" aria-label="Giờ đặt bàn" type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+          </label>
+          <div className="reservation-v2-pill reservation-v2-pill--summary">
+            <MdGroup aria-hidden="true" /><span>{guests} khách</span>
+          </div>
+        </div>
+        <div className="reservation-v2-tables" aria-label="Chọn số khách">
+          {[2, 4, 6, 8].map((capacity) => (
+            <ReservationTableChoice
+              capacity={capacity}
+              selected={guests === capacity}
+              onSelect={() => setGuests(capacity)}
+              key={capacity}
+            />
+          ))}
+        </div>
+        {error && <div className="reservation-v2-message reservation-v2-message--error" role="alert">{error}</div>}
+        {success && <div className="reservation-v2-message reservation-v2-message--success" role="status">{success}</div>}
+        <button className="customer-v2-primary-button" type="submit" disabled={submitting}>
+          {submitting ? 'ĐANG GIỮ CHỖ…' : 'XÁC NHẬN ĐẶT BÀN →'}
+        </button>
+      </form>
     </section>
   )
 }

@@ -1,31 +1,77 @@
-import { useEffect, useState } from 'react'
-import { MdFavorite, MdPets, MdSchedule } from 'react-icons/md'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { MdPets, MdSearch } from 'react-icons/md'
+import { CatCard } from '../../features/cats/CatCard'
 import { catalogRepository } from '../../services/catalogRepository'
 import type { CatProfile } from '../../types/models'
 
 export function CatsPage() {
-  const [items, setItems] = useState<CatProfile[]>([])
-  const [status, setStatus] = useState<string>('All')
+  const [cats, setCats] = useState<CatProfile[]>([])
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
-  useEffect(() => { catalogRepository.listCats().then(setItems).catch(() => setItems([])) }, [])
-  const statuses = ['All', ...new Set(items.map((cat) => cat.status))]
-  const visible = status === 'All' ? items : items.filter((cat) => cat.status === status)
+  const loadCats = useCallback(async () => {
+    setLoading(true)
+    setError(false)
+    try {
+      setCats(await catalogRepository.listCats())
+    } catch {
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void loadCats() }, [loadCats])
+
+  const visibleCats = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase('vi-VN')
+    if (!keyword) return cats
+    return cats.filter((cat) =>
+      `${cat.name} ${cat.breed}`.toLocaleLowerCase('vi-VN').includes(keyword),
+    )
+  }, [cats, query])
 
   return (
-    <section className="content-page page-width">
-      <div className="playful-hero">
-        <div><span className="hero-kicker hero-kicker--orange"><MdPets />Meet the residents</span><h1>Every cat has a story.</h1><p>See who is at the cafe today and learn how each resident likes to make friends.</p></div>
-        <div className="playful-hero__stamp"><MdFavorite /><strong>{items.length}</strong><span>cats call Loaf home</span></div>
-      </div>
-      <div className="section-heading section-heading--compact"><div><span className="eyebrow">Cat gallery</span><h2>Who would you like to meet?</h2></div><div className="category-row">{statuses.map((item) => <button className={status === item ? 'chip chip--active' : 'chip'} type="button" key={item} onClick={() => setStatus(item)}>{item}</button>)}</div></div>
-      <div className="cat-grid">
-        {visible.map((cat) => (
-          <article className="cat-card" key={cat.id}>
-            <div className="cat-card__image"><img src={cat.imageUrl} alt={cat.name} /><span className={`status-pill status-pill--${cat.status.toLowerCase().replaceAll(' ', '-')}`}>{cat.status}</span></div>
-            <div className="cat-card__body"><div><h3>{cat.name}</h3><span>{cat.breed}{cat.age ? ` · ${cat.age} years` : ''}</span></div><p>{cat.description}</p><div className="cat-traits"><span><MdFavorite />Friendly {cat.friendliness ?? '—'}/5</span><span><MdSchedule />Playful {cat.playfulness ?? '—'}/5</span></div></div>
-          </article>
-        ))}
-      </div>
+    <section className="customer-v2-page cats-v2-page">
+      <header className="cats-v2-heading">
+        <span className="cats-v2-heart">(♥)</span>
+        <h1>Nhân viên bốn chân</h1>
+        <label className="cats-v2-search">
+          <MdSearch aria-hidden="true" />
+          <input
+            type="search"
+            aria-label="Tìm bé mèo"
+            placeholder="Tìm bé mèo..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+      </header>
+
+      {loading && (
+        <div className="cats-v2-grid" aria-label="Đang tải danh sách mèo">
+          {Array.from({ length: 4 }, (_, index) => <div className="cat-v2-skeleton" key={index} />)}
+        </div>
+      )}
+      {!loading && error && (
+        <div className="customer-v2-feedback" role="alert">
+          <MdPets aria-hidden="true" />
+          <div><h2>Không thể tải danh sách mèo</h2><p>Vui lòng kiểm tra kết nối rồi thử lại.</p></div>
+          <button type="button" onClick={() => void loadCats()}>THỬ LẠI</button>
+        </div>
+      )}
+      {!loading && !error && visibleCats.length === 0 && (
+        <div className="customer-v2-feedback customer-v2-feedback--empty">
+          <MdPets aria-hidden="true" />
+          <div><h2>Chưa tìm thấy bé mèo nào</h2><p>Thử một tên hoặc giống mèo khác nhé.</p></div>
+        </div>
+      )}
+      {!loading && !error && visibleCats.length > 0 && (
+        <div className="cats-v2-grid">
+          {visibleCats.map((cat) => <CatCard cat={cat} key={cat.id} />)}
+        </div>
+      )}
     </section>
   )
 }

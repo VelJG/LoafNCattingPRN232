@@ -1,0 +1,70 @@
+.brand-wordmark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--landing-ink);
+  font-family: var(--font-body);
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brand-wordmark > span { color: var(--landing-accent); }
+.brand-wordmark--inverse { color: var(--app-bg); }
+.brand-wordmark--inverse > span { color: var(--app-accent-soft); }
+
+.v2-button {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 12px 21px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: filter 180ms ease, transform 120ms ease, background-color 180ms ease;
+}
+
+.v2-button:hover:not(:disabled) { filter: brightness(1.06); }
+.v2-button:active:not(:disabled) { transform: scale(0.985); }
+.v2-button:disabled { opacity: 0.56; cursor: not-allowed; }
+.v2-button--primary { background: var(--app-accent); color: #fff8f2; }
+.v2-button--secondary { border-color: var(--app-ink); background: transparent; color: var(--app-ink); }
+.v2-button--secondary:hover:not(:disabled) { background: var(--app-ink); color: var(--app-bg); }
+.v2-button--dark { background: var(--landing-ink); color: var(--landing-bg); }
+.v2-button--text { min-height: 44px; padding-inline: 10px; background: transparent; color: inherit; }
+
+.v2-field { display: grid; gap: 8px; }
+.v2-field > label { color: var(--app-ink); font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.v2-field__control { display: flex; min-height: 52px; align-items: center; gap: 10px; border: 1px solid rgba(95, 43, 21, 0.42); border-radius: 999px; padding: 0 16px; background: #fff; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.v2-field__control:focus-within { border-color: var(--app-accent); box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.14); }
+.v2-field__control input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--app-ink); }
+.v2-field__icon { display: inline-grid; flex: 0 0 auto; place-items: center; color: var(--app-muted); }
+.v2-field__action { display: inline-flex; flex: 0 0 auto; }
+.v2-field__action button { display: inline-grid; min-width: 38px; min-height: 38px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--app-muted); cursor: pointer; }
+.v2-field small { min-height: 1.1em; color: var(--app-muted); font-size: 0.78rem; }
+.v2-field .v2-field__error { color: #c2412d; }
+
+.status-chip { display: inline-flex; width: fit-content; align-items: center; border-radius: 999px; padding: 6px 10px; font-family: var(--font-mono); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.status-chip--warning { background: rgba(255, 107, 53, 0.12); color: #c44e21; }
+.status-chip--success { background: rgba(46, 125, 79, 0.14); color: #2e7d4f; }
+.status-chip--danger { background: rgba(194, 65, 45, 0.12); color: #c2412d; }
+.status-chip--info { background: rgba(77, 111, 184, 0.12); color: #4d6fb8; }
+.status-chip--neutral { background: rgba(138, 107, 91, 0.12); color: var(--app-muted); }
+
+.session-loading { display: flex; min-height: 100dvh; align-items: center; justify-content: center; flex-direction: column; gap: 18px; background: var(--app-bg); color: var(--app-ink); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.session-loading__mark { width: 42px; height: 2px; overflow: hidden; background: rgba(95, 43, 21, 0.14); }
+.session-loading__mark::after { display: block; width: 55%; height: 100%; background: var(--app-accent); content: ""; animation: session-progress 900ms ease-in-out infinite alternate; }
+
+@keyframes session-progress { to { transform: translateX(82%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .session-loading__mark::after { animation: none; }
+}
