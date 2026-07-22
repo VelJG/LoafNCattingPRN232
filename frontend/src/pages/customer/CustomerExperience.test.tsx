@@ -120,4 +120,21 @@ describe('customer experience', () => {
     expect(await screen.findByText('Caramel Catpuccino')).toBeInTheDocument()
     expect(listProducts).toHaveBeenCalledTimes(2)
   })
+
+  it('makes a failed category request visible and retryable', async () => {
+    const listCategories = vi
+      .spyOn(catalogRepository, 'listCategories')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([{ id: 1, name: 'Cà phê' }])
+    vi.spyOn(catalogRepository, 'listProducts').mockResolvedValue([product])
+    renderCustomer()
+
+    expect(await screen.findByRole('alert', { name: /lỗi danh mục/i })).toHaveTextContent(
+      'Không thể tải danh mục',
+    )
+    await userEvent.click(screen.getByRole('button', { name: /tải lại danh mục/i }))
+
+    expect(await screen.findByRole('button', { name: 'Cà phê' })).toBeInTheDocument()
+    expect(listCategories).toHaveBeenCalledTimes(2)
+  })
 })

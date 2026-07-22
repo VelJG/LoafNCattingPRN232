@@ -225,6 +225,32 @@
 
 .customer-v2 .category-row { gap: 10px; }
 
+.customer-v2 .category-error {
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border: 1px solid rgba(198, 66, 42, .45);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #8e2f25;
+  background: rgba(198, 66, 42, .08);
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.customer-v2 .category-error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .customer-v2 .chip {
   border: 1px solid var(--app-border);
   border-radius: 999px;

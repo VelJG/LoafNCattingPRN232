@@ -1,85 +1,70 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MdErrorOutline,
+  MdEventAvailable,
   MdInventory2,
-  MdOutlinePayments,
   MdOutlineReceiptLong,
   MdPets,
   MdRefresh,
 } from 'react-icons/md'
-import {
-  adminDashboardApi,
-  type AdminDashboardData,
-} from '../../features/admin/adminDashboardApi'
-import { useAuth } from '../../features/auth/useAuth'
+import { products } from '../../data/mockData'
+import { catalogRepository } from '../../services/catalogRepository'
+import type { DashboardMetric, RecentOrder } from '../../types/models'
 import { formatVnd } from '../../utils/format'
 
-const metricIcons = [MdOutlineReceiptLong, MdOutlinePayments, MdInventory2, MdPets]
-
-function translateStatus(status: string) {
-  const normalized = status.toLowerCase()
-  if (normalized.includes('pending') || normalized.includes('chờ')) return 'Đang chờ'
-  if (normalized.includes('completed') || normalized.includes('hoàn')) return 'Hoàn tất'
-  if (normalized.includes('cancel')) return 'Đã hủy'
-  return 'Đang xử lý'
+const metricIcons = {
+  orders: MdOutlineReceiptLong,
+  reservations: MdEventAvailable,
+  stock: MdInventory2,
+  cats: MdPets,
 }
 
-function statusClass(status: string) {
-  const normalized = status.toLowerCase()
-  if (normalized.includes('pending') || normalized.includes('chờ')) return 'pending'
-  if (normalized.includes('completed') || normalized.includes('hoàn')) return 'completed'
-  if (normalized.includes('cancel')) return 'cancelled'
-  return 'processing'
+const todayReservations = [
+  { time: '11:30', guest: 'Trần Khánh', people: 2, table: 'Cửa sổ 01' },
+  { time: '13:00', guest: 'Mai Linh', people: 4, table: 'Vườn 04' },
+  { time: '15:30', guest: 'Hoàng Nam', people: 2, table: 'Gác 02' },
+]
+
+const lowStockProducts = products.filter((product) => product.stock <= 7)
+
+const statusLabel: Record<RecentOrder['status'], string> = {
+  Pending: 'Đang chờ',
+  Processing: 'Đang xử lý',
+  Completed: 'Hoàn tất',
 }
 
 export function AdminDashboardPage() {
-  const auth = useAuth()
-  const [data, setData] = useState<AdminDashboardData | null>(null)
+  const [metrics, setMetrics] = useState<DashboardMetric[]>([])
+  const [orders, setOrders] = useState<RecentOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const requestId = useRef(0)
 
   const load = useCallback(() => {
-    const token = auth.session?.token
-    if (!token) return
+    const currentRequest = ++requestId.current
     setLoading(true)
     setError(false)
-    adminDashboardApi
-      .load(token)
+    catalogRepository
+      .getDashboard()
       .then((result) => {
-        setData(result)
+        if (currentRequest !== requestId.current) return
+        setMetrics(result.metrics)
+        setOrders(result.orders)
         setLoading(false)
       })
       .catch(() => {
-        setData(null)
+        if (currentRequest !== requestId.current) return
+        setMetrics([])
+        setOrders([])
         setError(true)
         setLoading(false)
       })
-  }, [auth.session?.token])
+  }, [])
 
-  useEffect(load, [load])
-
-  const metrics = useMemo(() => {
-    if (!data) return []
-    const pending = data.orders.filter((order) => {
-      const status = order.orderStatusName.toLowerCase()
-      return status.includes('pending') || status.includes('chờ')
-    }).length
-    const revenue = data.orders
-      .filter((order) => !order.orderStatusName.toLowerCase().includes('cancel'))
-      .reduce((sum, order) => sum + order.totalPrice, 0)
-    const lowStock = data.products.filter((product) => product.unitInStock <= 5)
-    const activeCats = data.cats.filter((cat) => {
-      const status = cat.statusName.toLowerCase()
-      return status.includes('cafe') || status.includes('quán') || status.includes('available')
-    }).length
-
-    return [
-      { label: 'Đơn đang chờ', value: String(pending), note: `${data.orders.length} đơn gần đây` },
-      { label: 'Doanh thu ghi nhận', value: formatVnd(revenue), note: 'Không tính đơn đã hủy' },
-      { label: 'Sắp hết hàng', value: String(lowStock.length), note: `${lowStock.length} sản phẩm` },
-      { label: 'Mèo tại quán', value: `${activeCats} / ${data.cats.length}`, note: 'Theo trạng thái hiện tại' },
-    ]
-  }, [data])
+  useEffect(() => {
+    load()
+    return () => { requestId.current += 1 }
+  }, [load])
 
   return (
     <section className="admin-page">
@@ -87,7 +72,7 @@ export function AdminDashboardPage() {
         <div>
           <span className="eyebrow">Tổng quan cửa hàng</span>
           <h1>Hôm nay tại Loaf'N Catting</h1>
-          <p>Theo dõi vận hành quán từ dữ liệu mới nhất của hệ thống.</p>
+          <p>Một nhịp nhìn gọn cho ca làm việc, từ đơn mới đến bàn đặt và tồn kho.</p>
         </div>
         <button className="button button--secondary" type="button" onClick={load} disabled={loading}>
           <MdRefresh />Làm mới dữ liệu
@@ -98,27 +83,27 @@ export function AdminDashboardPage() {
         <div>
           <span>Ca làm việc hiện tại</span>
           <h2>Mọi thứ trong tầm mắt.</h2>
-          <p>Đơn hàng, tồn kho và lịch của các bé mèo được gom về một nơi để đội ngũ xử lý nhanh hơn.</p>
+          <p>Đơn hàng, tồn kho và lịch đặt bàn được gom về một nơi để đội ngũ xử lý nhanh hơn.</p>
         </div>
-        <div className="admin-hero__index"><span>LIVE</span><strong>{data?.orders.length ?? '—'}</strong><small>đơn được ghi nhận</small></div>
+        <div className="admin-hero__index"><span>SHIFT</span><strong>{orders.length || '—'}</strong><small>đơn gần đây</small></div>
       </div>
 
       {error ? (
         <div className="admin-error" role="alert">
           <MdErrorOutline />
-          <div><h2>Không thể tải dashboard</h2><p>Hệ thống backend chưa phản hồi. Hãy kiểm tra kết nối và thử lại.</p></div>
+          <div><h2>Không thể tải dashboard</h2><p>Dữ liệu vận hành chưa phản hồi. Hãy thử làm mới sau một chút.</p></div>
           <button type="button" onClick={load}><MdRefresh />Thử lại</button>
         </div>
       ) : (
         <>
           <div className="metric-grid">
-            {(loading ? [1, 2, 3, 4] : metrics).map((metric, index) => {
+            {(loading ? [1, 2, 3, 4] : metrics).map((metric) => {
               if (typeof metric === 'number') {
                 return <div className="metric-card metric-card--skeleton" key={metric} />
               }
-              const Icon = metricIcons[index]
+              const Icon = metricIcons[metric.id as keyof typeof metricIcons] ?? MdOutlineReceiptLong
               return (
-                <article className="metric-card" key={metric.label}>
+                <article className={`metric-card metric-card--${metric.tone}`} key={metric.id}>
                   <span className="metric-card__icon"><Icon /></span>
                   <strong>{metric.value}</strong>
                   <h3>{metric.label}</h3>
@@ -130,28 +115,54 @@ export function AdminDashboardPage() {
 
           <div className="admin-table-card">
             <div className="admin-table-card__heading">
-              <div><span className="eyebrow">Luồng trực tiếp</span><h2>Đơn hàng gần đây</h2><p>Dữ liệu lấy từ API đơn hàng của backend.</p></div>
+              <div><span className="eyebrow">Luồng vận hành</span><h2>Đơn hàng gần đây</h2><p>Các đơn mới nhất trong không gian quản trị.</p></div>
             </div>
             <div className="table-scroll">
               <table>
                 <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Món</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
                 <tbody>
-                  {data?.orders.map((order) => (
-                    <tr key={order.orderId}>
-                      <td><strong>#{order.orderId}</strong></td>
-                      <td>{order.customerName || 'Khách tại quán'}</td>
-                      <td>{order.items.reduce((sum, item) => sum + item.quantity, 0)}</td>
-                      <td>{formatVnd(order.totalPrice)}</td>
-                      <td><span className={`order-status order-status--${statusClass(order.orderStatusName)}`}>{translateStatus(order.orderStatusName)}</span></td>
-                      <td>{new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(new Date(order.orderDate))}</td>
+                  {orders.map((order) => (
+                    <tr key={order.id}>
+                      <td><strong>{order.id}</strong></td>
+                      <td>{order.customer}</td>
+                      <td>{order.items}</td>
+                      <td>{formatVnd(order.total)}</td>
+                      <td><span className={`order-status order-status--${order.status.toLowerCase()}`}>{statusLabel[order.status]}</span></td>
+                      <td>{order.time}</td>
                     </tr>
                   ))}
-                  {!loading && data?.orders.length === 0 && (
+                  {!loading && orders.length === 0 && (
                     <tr><td colSpan={6} className="admin-table-empty">Chưa có đơn hàng nào.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="admin-operations-grid">
+            <section className="admin-summary-card" aria-labelledby="reservation-summary-title">
+              <header><span className="summary-icon"><MdEventAvailable /></span><div><span className="eyebrow">Theo giờ</span><h2 id="reservation-summary-title">Lịch đặt hôm nay</h2></div></header>
+              <div className="reservation-list">
+                {todayReservations.map((reservation) => (
+                  <article key={`${reservation.time}-${reservation.guest}`}>
+                    <strong>{reservation.time}</strong>
+                    <div><b>{reservation.guest}</b><span>{reservation.people} khách · {reservation.table}</span></div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="admin-summary-card" aria-labelledby="stock-summary-title">
+              <header><span className="summary-icon"><MdInventory2 /></span><div><span className="eyebrow">Cần chú ý</span><h2 id="stock-summary-title">Cảnh báo tồn kho</h2></div></header>
+              <div className="stock-list">
+                {lowStockProducts.map((product) => (
+                  <article key={product.id}>
+                    <div><b>{product.name}</b><span>{product.categoryName}</span></div>
+                    <strong>{product.stock} còn lại</strong>
+                  </article>
+                ))}
+              </div>
+            </section>
           </div>
         </>
       )}

@@ -2,7 +2,6 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { adminDashboardApi } from './features/admin/adminDashboardApi'
 import { AuthContext, type AuthContextValue } from './features/auth/AuthProvider'
 import type { Session, UserRole } from './features/auth/authModels'
 import { catalogRepository } from './services/catalogRepository'
@@ -47,11 +46,7 @@ function renderApp(path: string, session: Session | null = null) {
 beforeEach(() => {
   vi.spyOn(catalogRepository, 'listCategories').mockResolvedValue([])
   vi.spyOn(catalogRepository, 'listProducts').mockResolvedValue([])
-  vi.spyOn(adminDashboardApi, 'load').mockResolvedValue({
-    orders: [],
-    products: [],
-    cats: [],
-  })
+  vi.spyOn(catalogRepository, 'getDashboard').mockResolvedValue({ metrics: [], orders: [] })
 })
 
 describe('role-aware application routing', () => {

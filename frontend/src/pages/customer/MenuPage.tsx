@@ -16,6 +16,7 @@ import { formatVnd } from '../../utils/format'
 export function MenuPage() {
   const [keyword, setKeyword] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
+  const [categoryError, setCategoryError] = useState(false)
   const [category, setCategory] = useState<number | undefined>(undefined)
   const [items, setItems] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,8 +25,21 @@ export function MenuPage() {
   const cart = useCart()
 
   useEffect(() => {
-    catalogRepository.listCategories().then(setCategories).catch(() => setCategories([]))
-  }, [])
+    let alive = true
+    setCategoryError(false)
+    catalogRepository
+      .listCategories()
+      .then((result) => {
+        if (alive) setCategories(result)
+      })
+      .catch(() => {
+        if (alive) {
+          setCategories([])
+          setCategoryError(true)
+        }
+      })
+    return () => { alive = false }
+  }, [retryKey])
 
   useEffect(() => {
     let alive = true
@@ -100,6 +114,15 @@ export function MenuPage() {
             </label>
           </div>
         </div>
+
+        {categoryError && (
+          <div className="category-error" role="alert" aria-label="Lỗi danh mục">
+            <span>Không thể tải danh mục.</span>
+            <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
+              <MdRefresh /> Tải lại danh mục
+            </button>
+          </div>
+        )}
 
         <div className="category-row" aria-label="Danh mục thực đơn">
           <button

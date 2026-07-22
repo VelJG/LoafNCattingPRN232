@@ -2,9 +2,9 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { adminDashboardApi } from '../../features/admin/adminDashboardApi'
 import { AuthContext, type AuthContextValue } from '../../features/auth/AuthProvider'
 import { AdminLayout } from '../../layouts/AdminLayout'
+import { catalogRepository } from '../../services/catalogRepository'
 import { AdminDashboardPage } from './AdminDashboardPage'
 
 const staffSession = {
@@ -49,37 +49,29 @@ afterEach(() => {
 })
 
 describe('admin experience', () => {
-  it('loads live dashboard data for Staff and shows the authenticated profile', async () => {
-    const load = vi.spyOn(adminDashboardApi, 'load').mockResolvedValue({
-      orders: [
-        {
-          orderId: 1048,
-          customerUserId: 7,
-          customerName: 'Minh Anh',
-          orderDate: '2026-07-22T10:42:00Z',
-          totalPrice: 173000,
-          orderType: 'DineIn',
-          note: null,
-          orderStatusId: 2,
-          orderStatusName: 'Processing',
-          items: [{ orderDetailId: 1, productId: 3, productName: 'Catpuccino', quantity: 3, unitPrice: 59000, subtotal: 177000 }],
-        },
+  it('loads the safe dashboard repository and shows all operational summaries', async () => {
+    const load = vi.spyOn(catalogRepository, 'getDashboard').mockResolvedValue({
+      metrics: [
+        { id: 'orders', label: 'Đơn đang chờ', value: '1', note: 'Cần xử lý', tone: 'orange' },
+        { id: 'reservations', label: 'Lịch đặt hôm nay', value: '2', note: '4 khách', tone: 'green' },
+        { id: 'stock', label: 'Sắp hết hàng', value: '3', note: 'Kiểm tra kho', tone: 'rose' },
+        { id: 'cats', label: 'Mèo trong ca', value: '9 / 12', note: '3 bé nghỉ', tone: 'blue' },
       ],
-      products: [{ productId: 1, name: 'Cookie', unitInStock: 3, isAvailable: true }],
-      cats: [{ catId: 1, name: 'Mochi', statusName: 'At the cafe' }],
+      orders: [{ id: '#LC-1048', customer: 'Minh Anh', items: 3, total: 173000, status: 'Processing', time: '10:42' }],
     })
 
     renderAdmin()
 
     expect(await screen.findByText('Linh Nguyễn')).toBeInTheDocument()
     expect(screen.getByText('Nhân viên')).toBeInTheDocument()
-    expect(await screen.findByText('#1048')).toBeInTheDocument()
-    expect(screen.getByText('1 sản phẩm')).toBeInTheDocument()
-    expect(load).toHaveBeenCalledWith('staff-token')
+    expect(await screen.findByText('#LC-1048')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: /lịch đặt hôm nay/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: /cảnh báo tồn kho/i })).toBeInTheDocument()
+    expect(load).toHaveBeenCalledOnce()
   })
 
   it('shows a recoverable error and signs out to the landing page', async () => {
-    vi.spyOn(adminDashboardApi, 'load').mockRejectedValue(new Error('offline'))
+    vi.spyOn(catalogRepository, 'getDashboard').mockRejectedValue(new Error('offline'))
     const logout = vi.fn().mockResolvedValue(undefined)
     renderAdmin(logout)
 

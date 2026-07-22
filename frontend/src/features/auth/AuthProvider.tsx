@@ -5,6 +5,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { ApiError } from '../../api/httpClient'
 import { authApi, type AuthGateway } from './authApi'
 import type {
   LoginRequest,
@@ -80,8 +81,24 @@ export function AuthProvider({
         setSession(restored)
         setStatus('authenticated')
       })
-      .catch(() => {
+      .catch((error) => {
         if (!alive) return
+        if (error instanceof ApiError && error.status !== 401) {
+          try {
+            const restored: Session = {
+              ...stored,
+              user: {
+                ...stored.user,
+                role: normalizeRole(stored.user.role),
+              },
+            }
+            setSession(restored)
+            setStatus('authenticated')
+            return
+          } catch {
+            // A malformed local session must never become authenticated.
+          }
+        }
         clearStoredSession()
         setSession(null)
         setStatus('unauthenticated')

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../api/httpClient'
 import type { AuthGateway } from './authApi'
 import { AuthProvider } from './AuthProvider'
 import { useAuth } from './useAuth'
@@ -105,7 +106,7 @@ describe('AuthProvider', () => {
       JSON.stringify({ token: 'expired-token', user: customer }),
     )
     const gateway = createGateway({
-      verify: vi.fn().mockRejectedValue(new Error('expired')),
+      verify: vi.fn().mockRejectedValue(new ApiError(401, 'Unauthorized', 'Expired')),
     })
 
     render(
@@ -116,6 +117,30 @@ describe('AuthProvider', () => {
 
     await screen.findByText('unauthenticated')
     expect(localStorage.getItem('loafncatting.session')).toBeNull()
+  })
+
+  it('keeps the stored session during a transient verification failure', async () => {
+    localStorage.setItem(
+      'loafncatting.session',
+      JSON.stringify({
+        token: 'stored-token',
+        expiresAtUtc: loginResponse.expiresAtUtc,
+        user: customer,
+      }),
+    )
+    const gateway = createGateway({
+      verify: vi.fn().mockRejectedValue(new ApiError(0, 'Connection failed', 'Offline')),
+    })
+
+    render(
+      <AuthProvider gateway={gateway}>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await screen.findByText('Customer')
+    expect(screen.getByText('authenticated')).toBeInTheDocument()
+    expect(localStorage.getItem('loafncatting.session')).toContain('stored-token')
   })
 
   it('clears local state even when the logout request fails', async () => {

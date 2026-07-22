@@ -205,6 +205,72 @@
 .admin-v2 .order-status--cancelled { color: #8e2f25; background: #f8d8d4; }
 .admin-v2 .admin-table-empty { padding: 48px; text-align: center; color: var(--app-muted); }
 
+.admin-v2 .admin-operations-grid {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+.admin-v2 .admin-summary-card {
+  padding: 28px;
+  border: 1px solid var(--app-border);
+  background: rgba(255, 255, 255, .58);
+}
+
+.admin-v2 .admin-summary-card > header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--app-divider);
+}
+
+.admin-v2 .admin-summary-card > header h2 {
+  margin: 4px 0 0;
+  color: var(--app-ink);
+  font: 600 1.65rem var(--font-display);
+}
+
+.admin-v2 .summary-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--app-ink);
+  background: rgba(255, 107, 53, .18);
+  font-size: 1.25rem;
+}
+
+.admin-v2 .reservation-list article,
+.admin-v2 .stock-list article {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--app-divider);
+}
+
+.admin-v2 .reservation-list article > strong {
+  min-width: 54px;
+  color: var(--landing-accent);
+  font: 700 .78rem var(--font-mono);
+}
+
+.admin-v2 .reservation-list article div,
+.admin-v2 .stock-list article div { display: grid; gap: 3px; }
+.admin-v2 .reservation-list b,
+.admin-v2 .stock-list b { color: var(--app-ink); font-size: .88rem; }
+.admin-v2 .reservation-list span,
+.admin-v2 .stock-list span { color: var(--app-muted); font-size: .73rem; }
+
+.admin-v2 .stock-list article { justify-content: space-between; }
+.admin-v2 .stock-list article > strong {
+  color: #8e2f25;
+  font: 700 .68rem var(--font-mono);
+  text-transform: uppercase;
+}
+
 .admin-v2 .admin-error {
   min-height: 280px;
   margin-top: 22px;
@@ -272,6 +338,7 @@
   .admin-v2 .admin-hero { grid-template-columns: 1fr; gap: 32px; }
   .admin-v2 .admin-hero__index { justify-items: start; }
   .admin-v2 .metric-grid { grid-template-columns: 1fr 1fr; }
+  .admin-v2 .admin-operations-grid { grid-template-columns: 1fr; }
   .admin-v2 .admin-error { grid-template-columns: 1fr; padding: 30px 24px; }
 }
 
