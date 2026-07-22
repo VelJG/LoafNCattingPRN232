@@ -31,6 +31,7 @@ export interface RequestOptions {
   body?: unknown
   token?: string
   signal?: AbortSignal
+  headers?: Record<string, string>
 }
 
 export async function requestJson<T>(
@@ -47,6 +48,7 @@ export async function requestJson<T>(
         Accept: 'application/json',
         ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...options.headers,
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
