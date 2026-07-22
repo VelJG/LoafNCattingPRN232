@@ -1,6 +1,6 @@
 const apiBaseUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ??
-  'http://localhost:5053/api'
+  '/api'
 
 interface ProblemDetails {
   status?: number

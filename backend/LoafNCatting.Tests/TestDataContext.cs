@@ -15,7 +15,9 @@ public sealed class TestDataContext : IAsyncDisposable
     public TestDataContext(params IInterceptor[] interceptors)
     {
         var optionsBuilder = new DbContextOptionsBuilder<LoafNcattingPrn232Context>()
-            .UseInMemoryDatabase($"auth-tests-{Guid.NewGuid():N}");
+            .UseInMemoryDatabase($"backend-tests-{Guid.NewGuid():N}")
+            .ConfigureWarnings(warnings => warnings.Ignore(
+                InMemoryEventId.TransactionIgnoredWarning));
         if (interceptors.Length > 0)
         {
             optionsBuilder.AddInterceptors(interceptors);

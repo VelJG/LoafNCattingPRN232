@@ -30,7 +30,7 @@ describe('authApi', () => {
     await authApi.login({ email: 'minh@example.com', password: 'Password1' })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:5053/api/auth/login',
+      '/api/auth/login',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ email: 'minh@example.com', password: 'Password1' }),
@@ -54,7 +54,7 @@ describe('authApi', () => {
     await authApi.register(request)
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:5053/api/auth/register',
+      '/api/auth/register',
       expect.objectContaining({ method: 'POST', body: JSON.stringify(request) }),
     )
   })
@@ -76,14 +76,14 @@ describe('authApi', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'http://localhost:5053/api/auth/verify',
+      '/api/auth/verify',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer signed-token' }),
       }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'http://localhost:5053/api/auth/logout',
+      '/api/auth/logout',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ Authorization: 'Bearer signed-token' }),

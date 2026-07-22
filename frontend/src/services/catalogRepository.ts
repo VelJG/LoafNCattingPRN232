@@ -52,7 +52,7 @@ class MockCatalogRepository implements CatalogRepository {
   }
 }
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:5053/api'
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
 
 const fallbackProductImage =
   'https://images.unsplash.com/photo-1684246524496-180d5b07ee7e?auto=format&fit=crop&w=1400&q=86'

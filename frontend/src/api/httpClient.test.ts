@@ -20,7 +20,7 @@ describe('requestJson', () => {
       }),
     ).resolves.toEqual({ ok: true })
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:5053/api/auth/login',
+      '/api/auth/login',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ email: 'cat@example.com' }),

@@ -2,6 +2,7 @@ using System.Text;
 using LoafNCatting.Application.Contracts;
 using LoafNCatting.Caching.Extensions;
 using LoafNCatting.Services.Extensions;
+using LoafNCatting.WebApi.BackgroundServices;
 using LoafNCatting.WebApi.OpenApi;
 using LoafNCatting.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -12,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCacheServices();
 builder.Services.AddLoafNCattingDatabase(builder.Configuration);
 builder.Services.AddLoafNCattingServices();
+builder.Services.AddHostedService<ReservationLifecycleBackgroundService>();
 
 var jwtSection = builder.Configuration.GetSection(JwtSettings.SectionName);
 var jwtSettings = jwtSection.Get<JwtSettings>()
