@@ -11,6 +11,14 @@ import { CustomerLayout } from './layouts/CustomerLayout'
 import { PublicLayout } from './layouts/PublicLayout'
 import { AdminCatalogPage } from './pages/admin/AdminCatalogPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { AdminCatalogPage } from './pages/admin/AdminCatalogPage'
+import { AdminCatsPage } from './pages/admin/AdminCatsPage'
+import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
+import { AdminReservationsPage } from './pages/admin/AdminReservationsPage'
+import { AdminTablesPage } from './pages/admin/AdminTablesPage'
+import { AdminStorePage } from './pages/admin/AdminStorePage'
+import { AdminUsersPage } from './pages/admin/AdminUsersPage'
+import { AdminOnlyRoute } from './features/admin/AdminOnlyRoute'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { CatsPage } from './pages/customer/CatsPage'
@@ -66,6 +74,15 @@ function App() {
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboardPage />} />
           <Route path="catalog" element={<AdminCatalogPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="reservations" element={<AdminReservationsPage />} />
+          <Route path="catalog" element={<AdminCatalogPage />} />
+          <Route path="cats" element={<AdminCatsPage />} />
+          <Route path="tables" element={<AdminTablesPage />} />
+          <Route element={<AdminOnlyRoute />}>
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="store" element={<AdminStorePage />} />
+          </Route>
         </Route>
       </Route>
 

@@ -10,6 +10,10 @@
   --app-muted: #8a6b5b;
   --app-accent: #ff6b35;
   --app-accent-soft: #ff8c5a;
+  --app-accent-light: #ff8c5a;
+  --app-image-bg: #ffe3c7;
+  --app-muted-on-dark: #e9c9b4;
+  --app-faint-on-dark: #a9846c;
   --app-border: rgba(95, 43, 21, 0.28);
   --app-divider: rgba(95, 43, 21, 0.16);
   --font-display: "Playfair Display", Georgia, serif;

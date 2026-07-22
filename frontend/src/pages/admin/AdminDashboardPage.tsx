@@ -1,171 +1,187 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  MdErrorOutline,
-  MdEventAvailable,
+  MdCalendarMonth,
   MdInventory2,
+  MdOutlinePayments,
   MdOutlineReceiptLong,
-  MdPets,
-  MdRefresh,
+  MdTrendingUp,
 } from 'react-icons/md'
-import { products } from '../../data/mockData'
-import { catalogRepository } from '../../services/catalogRepository'
-import type { DashboardMetric, RecentOrder } from '../../types/models'
-import { formatVnd } from '../../utils/format'
+import { Link } from 'react-router-dom'
+import {
+  listAdminProducts,
+  listOrders,
+  listStoreReservations,
+} from '../../features/admin/adminApi'
+import { AdminFeedback } from '../../features/admin/components/AdminFeedback'
+import { AdminStatusChip } from '../../features/admin/components/AdminStatusChip'
+import type { AdminOrder, AdminProduct, StoreReservation } from '../../features/admin/adminTypes'
+import { useAuth } from '../../features/auth/useAuth'
 
-const metricIcons = {
-  orders: MdOutlineReceiptLong,
-  reservations: MdEventAvailable,
-  stock: MdInventory2,
-  cats: MdPets,
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-const todayReservations = [
-  { time: '11:30', guest: 'Trần Khánh', people: 2, table: 'Cửa sổ 01' },
-  { time: '13:00', guest: 'Mai Linh', people: 4, table: 'Vườn 04' },
-  { time: '15:30', guest: 'Hoàng Nam', people: 2, table: 'Gác 02' },
-]
+function timeLabel(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value.slice(0, 5)
+  return new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
+}
 
-const lowStockProducts = products.filter((product) => product.stock <= 7)
+function money(value: number) {
+  return `${Math.round(value).toLocaleString('vi-VN')} VND`
+}
 
-const statusLabel: Record<RecentOrder['status'], string> = {
-  Pending: 'Đang chờ',
-  Processing: 'Đang xử lý',
-  Completed: 'Hoàn tất',
+function compactRevenue(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}tr`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k`
+  return String(value)
 }
 
 export function AdminDashboardPage() {
-  const [metrics, setMetrics] = useState<DashboardMetric[]>([])
-  const [orders, setOrders] = useState<RecentOrder[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-  const requestId = useRef(0)
+  const token = useAuth().session?.token ?? ''
+  const [orders, setOrders] = useState<AdminOrder[] | null>(null)
+  const [reservations, setReservations] = useState<StoreReservation[] | null>(null)
+  const [products, setProducts] = useState<AdminProduct[] | null>(null)
+  const [errors, setErrors] = useState({ orders: false, reservations: false, products: false })
+  const [reloadKey, setReloadKey] = useState(0)
 
-  const load = useCallback(() => {
-    const currentRequest = ++requestId.current
-    setLoading(true)
-    setError(false)
-    catalogRepository
-      .getDashboard()
-      .then((result) => {
-        if (currentRequest !== requestId.current) return
-        setMetrics(result.metrics)
-        setOrders(result.orders)
-        setLoading(false)
-      })
-      .catch(() => {
-        if (currentRequest !== requestId.current) return
-        setMetrics([])
-        setOrders([])
-        setError(true)
-        setLoading(false)
-      })
-  }, [])
+  const reload = useCallback(() => setReloadKey((value) => value + 1), [])
 
   useEffect(() => {
-    load()
-    return () => { requestId.current += 1 }
-  }, [load])
+    const controller = new AbortController()
+    let alive = true
+    setOrders(null)
+    setReservations(null)
+    setProducts(null)
+    setErrors({ orders: false, reservations: false, products: false })
+
+    Promise.allSettled([
+      listOrders(token, controller.signal),
+      listStoreReservations(token, controller.signal),
+      listAdminProducts(token, controller.signal),
+    ]).then(([orderResult, reservationResult, productResult]) => {
+      if (!alive) return
+      if (orderResult.status === 'fulfilled') setOrders(orderResult.value)
+      else { setOrders([]); setErrors((current) => ({ ...current, orders: true })) }
+      if (reservationResult.status === 'fulfilled') setReservations(reservationResult.value)
+      else { setReservations([]); setErrors((current) => ({ ...current, reservations: true })) }
+      if (productResult.status === 'fulfilled') setProducts(productResult.value)
+      else { setProducts([]); setErrors((current) => ({ ...current, products: true })) }
+    })
+
+    return () => { alive = false; controller.abort() }
+  }, [reloadKey, token])
+
+  const today = localDateKey()
+  const recentOrders = useMemo(() => [...(orders ?? [])]
+    .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+    .slice(0, 5), [orders])
+  const todaysReservations = useMemo(() => (reservations ?? [])
+    .filter((reservation) => reservation.date === today)
+    .sort((a, b) => a.time.localeCompare(b.time))
+    .slice(0, 3), [reservations, today])
+  const lowStock = useMemo(() => (products ?? [])
+    .filter((product) => product.unitInStock < 10)
+    .sort((a, b) => a.unitInStock - b.unitInStock)
+    .slice(0, 3), [products])
+  const pendingOrders = (orders ?? []).filter((order) => /(pending|chờ|xử lý)/i.test(order.orderStatusName)).length
+  const revenue = (orders ?? [])
+    .filter((order) => order.orderDate.slice(0, 10) === today)
+    .reduce((total, order) => total + order.totalPrice, 0)
 
   return (
-    <section className="admin-page">
-      <div className="admin-page__heading">
-        <div>
-          <span className="eyebrow">Tổng quan cửa hàng</span>
-          <h1>Hôm nay tại Loaf'N Catting</h1>
-          <p>Một nhịp nhìn gọn cho ca làm việc, từ đơn mới đến bàn đặt và tồn kho.</p>
-        </div>
-        <button className="button button--secondary" type="button" onClick={load} disabled={loading}>
-          <MdRefresh />Làm mới dữ liệu
-        </button>
+    <section className="admin-page admin-dashboard-v2">
+      <div className="admin-stats-grid">
+        <article className="admin-stat">
+          <div><MdOutlineReceiptLong aria-hidden="true" /><span><MdTrendingUp aria-hidden="true" />+2</span></div>
+          <strong className="admin-stat__value">{orders === null ? '—' : pendingOrders}</strong>
+          <p>ĐƠN CHỜ XỬ LÝ</p>
+        </article>
+        <article className="admin-stat">
+          <div><MdCalendarMonth aria-hidden="true" /><span><MdTrendingUp aria-hidden="true" />+1</span></div>
+          <strong className="admin-stat__value">{reservations === null ? '—' : todaysReservations.length}</strong>
+          <p>ĐẶT BÀN HÔM NAY</p>
+        </article>
+        <article className="admin-stat">
+          <div><MdInventory2 aria-hidden="true" /><span className="admin-stat__warning">! Chú ý</span></div>
+          <strong className="admin-stat__value">{products === null ? '—' : lowStock.length}</strong>
+          <p>SẢN PHẨM SẮP HẾT</p>
+        </article>
+        <article className="admin-stat">
+          <div><MdOutlinePayments aria-hidden="true" /><span><MdTrendingUp aria-hidden="true" />+12%</span></div>
+          <strong className="admin-stat__value">{orders === null ? '—' : compactRevenue(revenue)}</strong>
+          <p>DOANH THU HÔM NAY</p>
+        </article>
       </div>
 
-      <div className="admin-hero">
-        <div>
-          <span>Ca làm việc hiện tại</span>
-          <h2>Mọi thứ trong tầm mắt.</h2>
-          <p>Đơn hàng, tồn kho và lịch đặt bàn được gom về một nơi để đội ngũ xử lý nhanh hơn.</p>
-        </div>
-        <div className="admin-hero__index"><span>SHIFT</span><strong>{orders.length || '—'}</strong><small>đơn gần đây</small></div>
-      </div>
-
-      {error ? (
-        <div className="admin-error" role="alert">
-          <MdErrorOutline />
-          <div><h2>Không thể tải dashboard</h2><p>Dữ liệu vận hành chưa phản hồi. Hãy thử làm mới sau một chút.</p></div>
-          <button type="button" onClick={load}><MdRefresh />Thử lại</button>
-        </div>
-      ) : (
-        <>
-          <div className="metric-grid">
-            {(loading ? [1, 2, 3, 4] : metrics).map((metric) => {
-              if (typeof metric === 'number') {
-                return <div className="metric-card metric-card--skeleton" key={metric} />
-              }
-              const Icon = metricIcons[metric.id as keyof typeof metricIcons] ?? MdOutlineReceiptLong
-              return (
-                <article className={`metric-card metric-card--${metric.tone}`} key={metric.id}>
-                  <span className="metric-card__icon"><Icon /></span>
-                  <strong>{metric.value}</strong>
-                  <h3>{metric.label}</h3>
-                  <p>{metric.note}</p>
+      <div className="admin-dashboard-grid">
+        <section className="admin-dashboard-panel admin-orders-summary">
+          <header><h2>Đơn hàng gần đây</h2><Link to="/admin/orders">XEM TẤT CẢ →</Link></header>
+          {errors.orders ? (
+            <AdminFeedback state="error" title="Không thể tải đơn hàng" message="Dữ liệu đơn hàng chưa phản hồi." onRetry={reload} />
+          ) : orders === null ? (
+            <AdminFeedback state="loading" />
+          ) : recentOrders.length === 0 ? (
+            <AdminFeedback state="empty" title="Chưa có đơn hàng" />
+          ) : (
+            <div className="admin-orders-table">
+              <div className="admin-orders-table__head"><span>MÃ ĐƠN</span><span>KHÁCH HÀNG</span><span>GIỜ</span><span>TỔNG</span><span>TRẠNG THÁI</span></div>
+              {recentOrders.map((order) => (
+                <article key={order.orderId}>
+                  <b>#{order.orderId}</b>
+                  <span>{order.customerName || 'Khách tại quán'}</span>
+                  <time>{timeLabel(order.orderDate)}</time>
+                  <strong>{money(order.totalPrice)}</strong>
+                  <AdminStatusChip value={order.orderStatusName} />
                 </article>
-              )
-            })}
-          </div>
-
-          <div className="admin-table-card">
-            <div className="admin-table-card__heading">
-              <div><span className="eyebrow">Luồng vận hành</span><h2>Đơn hàng gần đây</h2><p>Các đơn mới nhất trong không gian quản trị.</p></div>
+              ))}
             </div>
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Đơn</th><th>Khách hàng</th><th>Món</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr key={order.id}>
-                      <td><strong>{order.id}</strong></td>
-                      <td>{order.customer}</td>
-                      <td>{order.items}</td>
-                      <td>{formatVnd(order.total)}</td>
-                      <td><span className={`order-status order-status--${order.status.toLowerCase()}`}>{statusLabel[order.status]}</span></td>
-                      <td>{order.time}</td>
-                    </tr>
-                  ))}
-                  {!loading && orders.length === 0 && (
-                    <tr><td colSpan={6} className="admin-table-empty">Chưa có đơn hàng nào.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          )}
+        </section>
 
-          <div className="admin-operations-grid">
-            <section className="admin-summary-card" aria-labelledby="reservation-summary-title">
-              <header><span className="summary-icon"><MdEventAvailable /></span><div><span className="eyebrow">Theo giờ</span><h2 id="reservation-summary-title">Lịch đặt hôm nay</h2></div></header>
-              <div className="reservation-list">
-                {todayReservations.map((reservation) => (
-                  <article key={`${reservation.time}-${reservation.guest}`}>
-                    <strong>{reservation.time}</strong>
-                    <div><b>{reservation.guest}</b><span>{reservation.people} khách · {reservation.table}</span></div>
+        <div className="admin-dashboard-side">
+          <section className="admin-dashboard-panel admin-reservations-summary">
+            <header><h2>Đặt bàn hôm nay</h2><Link to="/admin/reservations">CHI TIẾT →</Link></header>
+            {errors.reservations ? (
+              <AdminFeedback state="error" title="Không thể tải đặt bàn" message="Danh sách đặt bàn chưa phản hồi." onRetry={reload} />
+            ) : reservations === null ? <AdminFeedback state="loading" /> : todaysReservations.length === 0 ? (
+              <AdminFeedback state="empty" title="Hôm nay chưa có lịch đặt" />
+            ) : (
+              <div className="admin-reservation-rows">
+                {todaysReservations.map((reservation) => (
+                  <article key={reservation.reservationId}>
+                    <b>{reservation.time.slice(0, 5)}</b>
+                    <span><strong>{reservation.table.tableName}</strong><small>{reservation.guestName}</small></span>
+                    <AdminStatusChip value={reservation.status} />
                   </article>
                 ))}
               </div>
-            </section>
+            )}
+          </section>
 
-            <section className="admin-summary-card" aria-labelledby="stock-summary-title">
-              <header><span className="summary-icon"><MdInventory2 /></span><div><span className="eyebrow">Cần chú ý</span><h2 id="stock-summary-title">Cảnh báo tồn kho</h2></div></header>
-              <div className="stock-list">
-                {lowStockProducts.map((product) => (
-                  <article key={product.id}>
-                    <div><b>{product.name}</b><span>{product.categoryName}</span></div>
-                    <strong>{product.stock} còn lại</strong>
+          <section className="admin-dashboard-panel admin-stock-summary">
+            <header><h2>Sắp hết hàng</h2><Link to="/admin/catalog">THỰC ĐƠN →</Link></header>
+            {errors.products ? (
+              <AdminFeedback state="error" title="Không thể tải tồn kho" message="Dữ liệu sản phẩm chưa phản hồi." onRetry={reload} />
+            ) : products === null ? <AdminFeedback state="loading" /> : lowStock.length === 0 ? (
+              <AdminFeedback state="empty" title="Tồn kho đang ổn định" />
+            ) : (
+              <div className="admin-stock-rows">
+                {lowStock.map((product) => (
+                  <article key={product.productId}>
+                    <span className="admin-stock-thumb"><MdInventory2 aria-hidden="true" /></span>
+                    <span><strong>{product.name}</strong><small>CÒN {product.unitInStock} · {product.categoryName.toLocaleUpperCase('vi-VN')}</small></span>
+                    <i><span style={{ width: `${Math.min(100, Math.max(4, product.unitInStock * 4))}%` }} /></i>
                   </article>
                 ))}
               </div>
-            </section>
-          </div>
-        </>
-      )}
+            )}
+          </section>
+        </div>
+      </div>
     </section>
   )
 }

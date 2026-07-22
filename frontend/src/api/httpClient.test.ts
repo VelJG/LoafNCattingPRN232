@@ -28,6 +28,34 @@ describe('requestJson', () => {
     )
   })
 
+  it('merges caller headers with authentication headers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await requestJson('/orders/1/status', {
+      method: 'PATCH',
+      token: 'staff-token',
+      headers: { 'X-Role': 'Staff' },
+      body: { orderStatusId: 2 },
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/orders/1/status',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer staff-token',
+          'Content-Type': 'application/json',
+          'X-Role': 'Staff',
+        }),
+      }),
+    )
+  })
+
   it('normalizes ProblemDetails into ApiError', async () => {
     vi.stubGlobal(
       'fetch',
