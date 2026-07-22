@@ -11,17 +11,23 @@ export function MenuPage() {
   const [category, setCategory] = useState<string>('')
   const [items, setItems] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const cart = useCart()
 
   useEffect(() => {
     let alive = true
     setLoading(true)
-    catalogRepository.listProducts({ keyword, categoryId: category }).then((result) => {
-      if (alive) {
-        setItems(result)
-        setLoading(false)
-      }
-    })
+    setError('')
+    catalogRepository.listProducts({ keyword, categoryId: category })
+      .then((result) => {
+        if (alive) setItems(result)
+      })
+      .catch((reason: unknown) => {
+        if (alive) setError(reason instanceof Error ? reason.message : 'Cannot load menu from API')
+      })
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
     return () => { alive = false }
   }, [keyword, category])
 
@@ -33,10 +39,10 @@ export function MenuPage() {
         <div className="menu-hero__copy">
           <span className="hero-kicker"><MdPets />Made for slow, cozy moments</span>
           <h1>Coffee tastes better with a cat nearby.</h1>
-          <p>Explore today’s drinks and fresh bakes, then save a table in our cat lounge.</p>
+          <p>Explore today's drinks and fresh bakes, then save a table in our cat lounge.</p>
           <div className="hero-actions">
-            <a className="button button--light" href="#today-menu">Browse today’s menu <MdArrowForward /></a>
-            <span><strong>12</strong> friendly cats on today’s roster</span>
+            <a className="button button--light" href="#today-menu">Browse today's menu <MdArrowForward /></a>
+            <span><strong>12</strong> friendly cats on today's roster</span>
           </div>
         </div>
         <div className="menu-hero__image">
@@ -58,7 +64,9 @@ export function MenuPage() {
           {categories.map((item) => <button className={category === item.id ? 'chip chip--active' : 'chip'} type="button" key={item.id} onClick={() => setCategory(item.id)}>{item.name}</button>)}
         </div>
 
-        {loading ? (
+        {error ? (
+          <div className="empty-state empty-state--page"><span className="icon-badge icon-badge--large"><MdSearch /></span><h3>Cannot load menu</h3><p>{error}</p></div>
+        ) : loading ? (
           <div className="product-grid" aria-label="Loading menu">
             {[1, 2, 3].map((item) => <div className="product-card product-card--skeleton" key={item} />)}
           </div>

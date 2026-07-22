@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminLayout } from './layouts/AdminLayout'
 import { CustomerLayout } from './layouts/CustomerLayout'
+import { AdminCatalogPage } from './pages/admin/AdminCatalogPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { CatsPage } from './pages/customer/CatsPage'
 import { MenuPage } from './pages/customer/MenuPage'
@@ -24,7 +25,7 @@ function App() {
       </Route>
 
       <Route path="admin" element={<AdminLayout />}>
-        <Route index element={<AdminDashboardPage />} />
+        <Route index element={<AdminDashboardPage />} />`r`n        <Route path="catalog" element={<AdminCatalogPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/menu" replace />} />
@@ -33,3 +34,4 @@ function App() {
 }
 
 export default App
+

@@ -3,10 +3,13 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { BrandLogo } from '../components/BrandLogo'
 
 const adminItems = [
-  { icon: MdDashboard, label: 'Overview', active: true },
+  { icon: MdDashboard, label: 'Overview', to: '/admin' },
+  { icon: MdLocalCafe, label: 'Catalog', to: '/admin/catalog' },
+]
+
+const disabledItems = [
   { icon: MdOutlineReceiptLong, label: 'Orders' },
   { icon: MdEvent, label: 'Reservations' },
-  { icon: MdLocalCafe, label: 'Catalog' },
   { icon: MdPets, label: 'Cats' },
 ]
 
@@ -20,7 +23,11 @@ export function AdminLayout() {
         <nav aria-label="Admin navigation">
           {adminItems.map((item) => {
             const Icon = item.icon
-            return <button className={item.active ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} key={item.label} type="button" disabled={!item.active}><Icon /><span>{item.label}</span></button>
+            return <NavLink className={({ isActive }) => isActive ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'} end={item.to === '/admin'} key={item.label} to={item.to}><Icon /><span>{item.label}</span></NavLink>
+          })}
+          {disabledItems.map((item) => {
+            const Icon = item.icon
+            return <button className="admin-nav-item" key={item.label} type="button" disabled><Icon /><span>{item.label}</span></button>
           })}
         </nav>
         <div className="admin-sidebar__footer">
@@ -30,8 +37,8 @@ export function AdminLayout() {
       </aside>
       <div className="admin-content">
         <header className="admin-topbar">
-          <div><span className="eyebrow">Friday, 10 July</span><strong>Good morning, Linh</strong></div>
-          <div className="admin-profile"><span><strong>Linh Nguyen</strong><small>Store manager</small></span><div>LN</div></div>
+          <div><span className="eyebrow">Admin workspace</span><strong>LoafNCatting operations</strong></div>
+          <div className="admin-profile"><span><strong>Admin</strong><small>API role header</small></span><div>AD</div></div>
         </header>
         <main id="admin-main"><Outlet /></main>
       </div>

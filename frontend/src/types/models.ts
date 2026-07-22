@@ -11,6 +11,7 @@ export interface Product {
   description: string
   categoryId: CategoryId
   categoryName: string
+  apiCategoryId?: number
   price: number
   discountPrice?: number
   stock: number
@@ -63,3 +64,5 @@ export interface CartLine {
   product: Product
   quantity: number
 }
+
+
