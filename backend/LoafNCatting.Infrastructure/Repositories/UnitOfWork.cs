@@ -10,9 +10,12 @@ namespace LoafNCatting.Infrastructure.Repositories;
 public class UnitOfWork : IUnitOfWork, IAsyncDisposable
 {
     private readonly Dictionary<Type, object> _repositories = new();
+    private readonly List<Func<CancellationToken, Task>> _afterCommitCallbacks = [];
     private IDbContextTransaction? _transaction;
 
     public IApplicationDbContext ApplicationDbContext { get; }
+
+    public bool IsTransactionActive => _transaction is not null;
 
     public UnitOfWork(IApplicationDbContext applicationDbContext)
     {
@@ -78,10 +81,18 @@ public class UnitOfWork : IUnitOfWork, IAsyncDisposable
         await _transaction.CommitAsync(cancellationToken);
         await _transaction.DisposeAsync();
         _transaction = null;
+
+        var callbacks = _afterCommitCallbacks.ToArray();
+        _afterCommitCallbacks.Clear();
+        foreach (var callback in callbacks)
+        {
+            await callback(CancellationToken.None);
+        }
     }
 
     public async Task RollbackTransactionAsync(CancellationToken cancellationToken = default)
     {
+        _afterCommitCallbacks.Clear();
         if (_transaction is null)
         {
             return;
@@ -95,9 +106,22 @@ public class UnitOfWork : IUnitOfWork, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _afterCommitCallbacks.Clear();
         if (_transaction is not null)
         {
             await _transaction.DisposeAsync();
         }
+    }
+
+    public void RegisterAfterCommit(Func<CancellationToken, Task> callback)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+        if (_transaction is null)
+        {
+            throw new InvalidOperationException(
+                "After-commit work requires an active transaction.");
+        }
+
+        _afterCommitCallbacks.Add(callback);
     }
 }

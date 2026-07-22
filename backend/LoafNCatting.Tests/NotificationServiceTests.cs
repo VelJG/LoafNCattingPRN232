@@ -1,7 +1,9 @@
 using LoafNCatting.Application.Contracts;
+using LoafNCatting.Application.Interfaces.Services;
 using LoafNCatting.Entity.Models;
 using LoafNCatting.Services.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LoafNCatting.Tests;
 
@@ -328,8 +330,117 @@ public sealed class NotificationServiceTests
                     NotificationTypes.ReservationCreated)));
     }
 
+    [TestMethod]
+    public async Task QueueForUserAsync_PublishesRealtimeOnlyAfterTransactionCommit()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var publisher = new RecordingNotificationRealtimePublisher();
+        var service = CreateService(data, publisher);
+        await data.UnitOfWork.BeginTransactionAsync();
+
+        await service.QueueForUserAsync(
+            10,
+            new NotificationDraft(
+                "New reply",
+                "The store replied.",
+                NotificationTypes.NewStaffReply));
+
+        Assert.HasCount(0, publisher.Events);
+
+        await data.UnitOfWork.CommitTransactionAsync();
+
+        Assert.HasCount(1, publisher.Events);
+        var notificationEvent = publisher.Events[0].NotificationEvent;
+        Assert.AreEqual(NotificationRealtimeChangeTypes.Created, notificationEvent.ChangeType);
+        Assert.IsNotNull(notificationEvent.Notification);
+        Assert.IsTrue(notificationEvent.Notification.NotificationId > 0);
+        Assert.AreEqual(1, notificationEvent.UnreadCount);
+    }
+
+    [TestMethod]
+    public async Task QueueForUserAsync_Rollback_DoesNotPublishRealtime()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var publisher = new RecordingNotificationRealtimePublisher();
+        var service = CreateService(data, publisher);
+        await data.UnitOfWork.BeginTransactionAsync();
+
+        await service.QueueForUserAsync(
+            10,
+            new NotificationDraft(
+                "New reply",
+                "The store replied.",
+                NotificationTypes.NewStaffReply));
+        await data.UnitOfWork.RollbackTransactionAsync();
+
+        Assert.HasCount(0, publisher.Events);
+        Assert.AreEqual(0, await data.DbContext.Notifications.CountAsync());
+    }
+
+    [TestMethod]
+    public async Task MarkAsReadAsync_PublishesUpdatedUnreadCount()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        AddNotification(data, 1, 10, isRead: false, createdMinute: 1);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var publisher = new RecordingNotificationRealtimePublisher();
+        var service = CreateService(data, publisher);
+
+        await service.MarkAsReadAsync(10, 1);
+
+        Assert.HasCount(1, publisher.Events);
+        var notificationEvent = publisher.Events[0].NotificationEvent;
+        Assert.AreEqual(NotificationRealtimeChangeTypes.Read, notificationEvent.ChangeType);
+        Assert.AreEqual(0, notificationEvent.UnreadCount);
+        Assert.IsTrue(notificationEvent.Notification!.IsRead);
+    }
+
+    [TestMethod]
+    public async Task QueueForUserAsync_WhenRealtimeFails_NotificationRemainsCommitted()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(
+            data,
+            new ThrowingNotificationRealtimePublisher());
+        await data.UnitOfWork.BeginTransactionAsync();
+
+        await service.QueueForUserAsync(
+            10,
+            new NotificationDraft(
+                "New reply",
+                "The store replied.",
+                NotificationTypes.NewStaffReply));
+        await data.UnitOfWork.CommitTransactionAsync();
+
+        Assert.AreEqual(1, await data.DbContext.Notifications.CountAsync());
+    }
+
     private static NotificationService CreateService(TestDataContext data)
         => new(data.UnitOfWork, new TestTimeProvider(NotificationTime));
+
+    private static NotificationService CreateService(
+        TestDataContext data,
+        INotificationRealtimePublisher publisher)
+        => new(
+            data.UnitOfWork,
+            new TestTimeProvider(NotificationTime),
+            publisher,
+            NullLogger<NotificationService>.Instance);
 
     private static void AddUser(
         TestDataContext data,
@@ -365,4 +476,30 @@ public sealed class NotificationServiceTests
             IsRead = isRead,
             CreatedAt = new DateTime(2026, 7, 22, 3, createdMinute, 0, DateTimeKind.Utc)
         });
+
+    private sealed class RecordingNotificationRealtimePublisher
+        : INotificationRealtimePublisher
+    {
+        public List<(int UserId, NotificationChangedRealtimeDto NotificationEvent)> Events
+            { get; } = [];
+
+        public Task PublishChangedAsync(
+            int recipientUserId,
+            NotificationChangedRealtimeDto notificationEvent,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add((recipientUserId, notificationEvent));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingNotificationRealtimePublisher
+        : INotificationRealtimePublisher
+    {
+        public Task PublishChangedAsync(
+            int recipientUserId,
+            NotificationChangedRealtimeDto notificationEvent,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Realtime failure.");
+    }
 }
