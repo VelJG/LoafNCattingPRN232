@@ -2,6 +2,7 @@ using LoafNCatting.Entity.Models;
 using LoafNCatting.Infrastructure.Context;
 using LoafNCatting.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace LoafNCatting.Tests;
 
@@ -11,11 +12,16 @@ public sealed class TestDataContext : IAsyncDisposable
 
     public UnitOfWork UnitOfWork { get; }
 
-    public TestDataContext()
+    public TestDataContext(params IInterceptor[] interceptors)
     {
-        var options = new DbContextOptionsBuilder<LoafNcattingPrn232Context>()
-            .UseInMemoryDatabase($"auth-tests-{Guid.NewGuid():N}")
-            .Options;
+        var optionsBuilder = new DbContextOptionsBuilder<LoafNcattingPrn232Context>()
+            .UseInMemoryDatabase($"auth-tests-{Guid.NewGuid():N}");
+        if (interceptors.Length > 0)
+        {
+            optionsBuilder.AddInterceptors(interceptors);
+        }
+
+        var options = optionsBuilder.Options;
         DbContext = new LoafNcattingPrn232Context(options);
         var factory = new DbFactoryContext(() => DbContext);
         UnitOfWork = new UnitOfWork(new ApplicationDbContext(factory));

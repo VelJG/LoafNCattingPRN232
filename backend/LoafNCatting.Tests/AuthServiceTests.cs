@@ -4,6 +4,7 @@ using LoafNCatting.Entity.Models;
 using LoafNCatting.Services.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace LoafNCatting.Tests;
 
@@ -81,7 +82,8 @@ public sealed class AuthServiceTests
     [TestMethod]
     public async Task LoginAsync_WhenPasswordHashNeedsRehash_PersistsUpgradedHash()
     {
-        await using var data = new TestDataContext();
+        var interceptor = new ModifiedUserPropertiesInterceptor();
+        await using var data = new TestDataContext(interceptor);
         await data.SeedRolesAsync();
         data.DbContext.Users.Add(new User
         {
@@ -96,6 +98,7 @@ public sealed class AuthServiceTests
         });
         await data.DbContext.SaveChangesAsync();
         data.DbContext.ChangeTracker.Clear();
+        interceptor.Reset();
         var hasher = new RehashingPasswordHasher();
         var accounts = new UserAccountService(data.UnitOfWork, hasher);
         var service = new AuthService(
@@ -110,6 +113,9 @@ public sealed class AuthServiceTests
         var saved = await data.DbContext.Users.SingleAsync();
         Assert.AreEqual("upgraded-hash", saved.Password);
         Assert.IsNotNull(saved.UpdatedAt);
+        CollectionAssert.AreEquivalent(
+            new[] { nameof(User.Password), nameof(User.UpdatedAt) },
+            interceptor.ModifiedProperties.ToArray());
     }
 
     [TestMethod]
@@ -179,5 +185,28 @@ public sealed class AuthServiceTests
             string hashedPassword,
             string providedPassword)
             => PasswordVerificationResult.SuccessRehashNeeded;
+    }
+
+    private sealed class ModifiedUserPropertiesInterceptor : SaveChangesInterceptor
+    {
+        public List<string> ModifiedProperties { get; } = [];
+
+        public void Reset() => ModifiedProperties.Clear();
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            var context = eventData.Context
+                ?? throw new InvalidOperationException("A DbContext is required.");
+            ModifiedProperties.AddRange(context.ChangeTracker
+                .Entries<User>()
+                .Where(entry => entry.State == EntityState.Modified)
+                .SelectMany(entry => entry.Properties)
+                .Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name));
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 }

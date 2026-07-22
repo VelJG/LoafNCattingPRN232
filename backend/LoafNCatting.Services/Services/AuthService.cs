@@ -42,7 +42,6 @@ public sealed class AuthService : IAuthService
         var users = _unitOfWork.Repository<User>();
         var user = await users
             .Entities
-            .AsNoTracking()
             .Include(item => item.Role)
             .SingleOrDefaultAsync(item => item.Email == email, cancellationToken);
 
@@ -64,7 +63,6 @@ public sealed class AuthService : IAuthService
         {
             user.Password = _passwordHasher.HashPassword(user, request.Password);
             user.UpdatedAt = DateTime.UtcNow;
-            await users.UpdateAsync(user, saveChanges: false);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
