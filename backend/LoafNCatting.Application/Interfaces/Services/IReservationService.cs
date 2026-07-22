@@ -32,6 +32,11 @@ public interface IReservationService
         int reservationId,
         CancellationToken cancellationToken = default);
 
+    Task<StoreReservationDto> CreateWalkInAsync(
+        int operatorUserId,
+        CreateWalkInRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<StoreReservationDto> ConfirmByStoreAsync(
         int operatorUserId,
         int reservationId,

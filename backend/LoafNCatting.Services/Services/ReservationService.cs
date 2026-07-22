@@ -21,6 +21,8 @@ public sealed class ReservationService : IReservationService
 
     private static readonly TimeOnly FirstBookableTime = new(8, 30);
     private static readonly TimeOnly LastBookableTime = new(20, 30);
+    private static readonly TimeOnly FirstWalkInTime = new(8, 0);
+    private static readonly TimeOnly LastWalkInTime = new(20, 30);
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private const string PendingReservationStatus = "Đang chờ";
@@ -359,6 +361,106 @@ public sealed class ReservationService : IReservationService
             ?? throw new KeyNotFoundException("Reservation was not found.");
 
         return MapStoreReservation(reservation);
+    }
+
+    public async Task<StoreReservationDto> CreateWalkInAsync(
+        int operatorUserId,
+        CreateWalkInRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var numberOfGuests = request.NumberOfGuests
+            ?? throw new ArgumentException("Number of guests is required.");
+        if (numberOfGuests <= 0)
+        {
+            throw new ArgumentException(
+                "Number of guests must be greater than zero.",
+                nameof(request));
+        }
+
+        var guestName = RequiredTrimmed(request.GuestName, nameof(request.GuestName));
+        var guestPhoneNumber = string.IsNullOrWhiteSpace(request.GuestPhoneNumber)
+            ? string.Empty
+            : request.GuestPhoneNumber.Trim();
+        var note = string.IsNullOrWhiteSpace(request.Note)
+            ? null
+            : request.Note.Trim();
+        if (guestName.Length > MaximumGuestNameLength)
+        {
+            throw new ArgumentException(
+                $"Guest name cannot exceed {MaximumGuestNameLength} characters.",
+                nameof(request));
+        }
+
+        if (guestPhoneNumber.Length > MaximumGuestPhoneNumberLength)
+        {
+            throw new ArgumentException(
+                $"Guest phone number cannot exceed {MaximumGuestPhoneNumberLength} characters.",
+                nameof(request));
+        }
+
+        var now = _timeProvider.GetUtcNow().ToOffset(VietnamUtcOffset);
+        var date = DateOnly.FromDateTime(now.DateTime);
+        var time = new TimeOnly(now.Hour, now.Minute);
+        if (time < FirstWalkInTime || time > LastWalkInTime)
+        {
+            throw new InvalidOperationException(
+                "Walk-ins can start only between 08:00 and 20:30 so the 90-minute visit ends by closing time.");
+        }
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+            var table = await FindAvailableWalkInTableForUpdateAsync(
+                date,
+                time,
+                numberOfGuests,
+                cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "No table is available for this walk-in party for the next 90 minutes.");
+            var checkedInStatus = await GetReservationStatusAsync(
+                CheckedInReservationStatus,
+                cancellationToken);
+            var occupiedStatus = await GetTableStatusAsync(
+                OccupiedTableStatus,
+                cancellationToken);
+            var createdAtUtc = now.UtcDateTime;
+            var reservation = new Reservation
+            {
+                UserId = null,
+                Date = date,
+                Time = time,
+                GuestName = guestName,
+                GuestPhoneNumber = guestPhoneNumber,
+                NumberOfGuests = numberOfGuests,
+                Note = note,
+                StatusId = checkedInStatus.StatusId,
+                TableId = table.TableId,
+                CreatedAt = createdAtUtc
+            };
+            table.TableStatusId = occupiedStatus.TableStatusId;
+            table.TableStatus = occupiedStatus;
+
+            await _unitOfWork.Repository<Reservation>().InsertAsync(
+                reservation,
+                saveChanges: false);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            reservation.Status = checkedInStatus;
+            reservation.Table = table;
+            return MapStoreReservation(reservation);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task<StoreReservationDto> ConfirmByStoreAsync(
@@ -959,6 +1061,50 @@ public sealed class ReservationService : IReservationService
                 table.Area,
                 table.Description))
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<RestaurantTable?> FindAvailableWalkInTableForUpdateAsync(
+        DateOnly date,
+        TimeOnly time,
+        int numberOfGuests,
+        CancellationToken cancellationToken)
+    {
+        var endTime = time.AddMinutes(ReservationDurationMinutes);
+        var earliestOverlappingStart = time.AddMinutes(-ReservationDurationMinutes);
+        var conflictingTableIds = _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Where(reservation =>
+                reservation.Date == date &&
+                BlockingReservationStatuses.Contains(reservation.Status.StatusName) &&
+                reservation.Time < endTime &&
+                reservation.Time > earliestOverlappingStart)
+            .Select(reservation => reservation.TableId)
+            .Distinct();
+
+        var tableRepository = _unitOfWork.Repository<RestaurantTable>();
+        var selectedTableId = await tableRepository
+            .Entities
+            .AsNoTracking()
+            .Where(table =>
+                table.Capacity >= numberOfGuests &&
+                table.TableStatus.StatusName == AvailableTableStatus &&
+                !conflictingTableIds.Contains(table.TableId))
+            .OrderBy(table => table.Capacity)
+            .ThenBy(table => table.TableId)
+            .Select(table => (int?)table.TableId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (!selectedTableId.HasValue)
+        {
+            return null;
+        }
+
+        return await tableRepository
+            .Entities
+            .Include(table => table.TableStatus)
+            .SingleAsync(
+                table => table.TableId == selectedTableId.Value,
+                cancellationToken);
     }
 
     private static string RequiredTrimmed(string? value, string parameterName)

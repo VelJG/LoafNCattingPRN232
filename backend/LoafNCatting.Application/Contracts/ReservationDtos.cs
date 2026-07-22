@@ -44,6 +44,20 @@ public sealed class CreateReservationRequest
     public string? Note { get; init; }
 }
 
+public sealed class CreateWalkInRequest
+{
+    [Range(1, int.MaxValue)]
+    public int? NumberOfGuests { get; init; }
+
+    [Required, MaxLength(255)]
+    public string? GuestName { get; init; }
+
+    [MaxLength(20)]
+    public string? GuestPhoneNumber { get; init; }
+
+    public string? Note { get; init; }
+}
+
 public sealed record ReservationDto(
     int ReservationId,
     int CustomerUserId,
