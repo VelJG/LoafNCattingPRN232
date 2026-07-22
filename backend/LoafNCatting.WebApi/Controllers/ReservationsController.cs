@@ -19,18 +19,45 @@ public sealed class ReservationsController : ApiControllerBase
     }
 
     [Authorize(Roles = "Customer")]
+    [HttpGet("mine")]
+    public Task<IActionResult> GetMine(CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _reservationService.GetMineAsync(
+            customerUserId,
+            cancellationToken));
+    }
+
+    [Authorize(Roles = "Customer")]
+    [HttpGet("{reservationId:int}")]
+    public Task<IActionResult> GetMineById(
+        int reservationId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _reservationService.GetMineByIdAsync(
+            customerUserId,
+            reservationId,
+            cancellationToken));
+    }
+
+    [Authorize(Roles = "Customer")]
     [HttpPost]
     public Task<IActionResult> Create(
         [FromBody] CreateReservationRequest request,
         CancellationToken cancellationToken)
     {
-        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        if (!int.TryParse(subject, out var customerUserId))
+        if (!TryGetCustomerUserId(out var customerUserId))
         {
-            return Task.FromResult<IActionResult>(Error(
-                StatusCodes.Status401Unauthorized,
-                "Unauthorized",
-                "The access token is missing a valid subject claim."));
+            return InvalidSubject();
         }
 
         return HandleAsync(
@@ -43,6 +70,23 @@ public sealed class ReservationsController : ApiControllerBase
                 reservation));
     }
 
+    [Authorize(Roles = "Customer")]
+    [HttpPatch("{reservationId:int}/cancel")]
+    public Task<IActionResult> Cancel(
+        int reservationId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _reservationService.CancelByCustomerAsync(
+            customerUserId,
+            reservationId,
+            cancellationToken));
+    }
+
     [HttpGet("availability")]
     public Task<IActionResult> GetAvailability(
         [FromQuery] ReservationAvailabilityRequest request,
@@ -50,4 +94,16 @@ public sealed class ReservationsController : ApiControllerBase
         => HandleAsync(() => _reservationService.GetAvailabilityAsync(
             request,
             cancellationToken));
+
+    private bool TryGetCustomerUserId(out int customerUserId)
+    {
+        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        return int.TryParse(subject, out customerUserId);
+    }
+
+    private Task<IActionResult> InvalidSubject()
+        => Task.FromResult<IActionResult>(Error(
+            StatusCodes.Status401Unauthorized,
+            "Unauthorized",
+            "The access token is missing a valid subject claim."));
 }

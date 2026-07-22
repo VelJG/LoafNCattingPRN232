@@ -12,6 +12,7 @@ public sealed class ReservationService : IReservationService
     private const int ReservationDurationMinutes = 90;
     private const int MinimumAdvanceMinutes = 30;
     private const int MaximumAdvanceDays = 7;
+    private const int MinimumCustomerCancellationMinutes = 120;
     private const int TableHoldMinutes = 30;
     private const int EndingSoonReminderMinutes = 10;
     private const int ReminderDetectionWindowMinutes = 1;
@@ -24,6 +25,7 @@ public sealed class ReservationService : IReservationService
 
     private const string PendingReservationStatus = "Đang chờ";
     private const string ConfirmedReservationStatus = "Đã xác nhận";
+    private const string CancelledReservationStatus = "Đã hủy";
     private const string CheckedInReservationStatus = "Đã đến";
     private const string NoShowReservationStatus = "Không đến";
     private const string ExpiredReservationStatus = "Hết hạn";
@@ -55,17 +57,59 @@ public sealed class ReservationService : IReservationService
         _timeProvider = timeProvider;
     }
 
+    public async Task<IReadOnlyList<ReservationDto>> GetMineAsync(
+        int customerUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateCustomerUserId(customerUserId);
+        await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+
+        var reservations = await _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Include(reservation => reservation.Status)
+            .Include(reservation => reservation.Table)
+            .Where(reservation => reservation.UserId == customerUserId)
+            .OrderByDescending(reservation => reservation.Date)
+            .ThenByDescending(reservation => reservation.Time)
+            .ThenByDescending(reservation => reservation.ReservationId)
+            .ToListAsync(cancellationToken);
+
+        return reservations
+            .Select(MapReservation)
+            .ToList();
+    }
+
+    public async Task<ReservationDto> GetMineByIdAsync(
+        int customerUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateCustomerUserId(customerUserId);
+        ValidateReservationId(reservationId);
+        await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+
+        var reservation = await _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Include(current => current.Status)
+            .Include(current => current.Table)
+            .SingleOrDefaultAsync(
+                current =>
+                    current.ReservationId == reservationId &&
+                    current.UserId == customerUserId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation was not found.");
+
+        return MapReservation(reservation);
+    }
+
     public async Task<ReservationDto> CreateAsync(
         int customerUserId,
         CreateReservationRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (customerUserId <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(customerUserId),
-                "Customer user id must be greater than zero.");
-        }
+        ValidateCustomerUserId(customerUserId);
 
         ArgumentNullException.ThrowIfNull(request);
         var (date, time, numberOfGuests, startAt, endAt) = ValidateRequest(
@@ -103,20 +147,7 @@ public sealed class ReservationService : IReservationService
 
         try
         {
-            var isActiveCustomer = await _unitOfWork.Repository<User>()
-                .Entities
-                .AsNoTracking()
-                .AnyAsync(
-                    user =>
-                        user.UserId == customerUserId &&
-                        user.IsActive &&
-                        user.Role.RoleName == CustomerRoleName,
-                    cancellationToken);
-            if (!isActiveCustomer)
-            {
-                throw new UnauthorizedAccessException(
-                    "The authenticated customer account is not active or valid.");
-            }
+            await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
 
             var endTime = time.AddMinutes(ReservationDurationMinutes);
             var earliestOverlappingStart = time.AddMinutes(-ReservationDurationMinutes);
@@ -193,6 +224,84 @@ public sealed class ReservationService : IReservationService
                 endAt,
                 suggestedTable,
                 createdAtUtc);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<ReservationDto> CancelByCustomerAsync(
+        int customerUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateCustomerUserId(customerUserId);
+        ValidateReservationId(reservationId);
+        var now = _timeProvider.GetUtcNow().ToOffset(VietnamUtcOffset);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+
+            var reservation = await _unitOfWork.Repository<Reservation>()
+                .Entities
+                .Include(current => current.Status)
+                .Include(current => current.Table)
+                .SingleOrDefaultAsync(
+                    current =>
+                        current.ReservationId == reservationId &&
+                        current.UserId == customerUserId,
+                    cancellationToken)
+                ?? throw new KeyNotFoundException("Reservation was not found.");
+
+            var currentStatusName = reservation.Status.StatusName;
+            if (!string.Equals(
+                    currentStatusName,
+                    PendingReservationStatus,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    currentStatusName,
+                    ConfirmedReservationStatus,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Only pending or confirmed reservations can be cancelled by the customer.");
+            }
+
+            var startAt = ToVietnamDateTimeOffset(reservation.Date, reservation.Time);
+            if (startAt - now < TimeSpan.FromMinutes(MinimumCustomerCancellationMinutes))
+            {
+                throw new InvalidOperationException(
+                    "A reservation must be cancelled at least 2 hours before its start time.");
+            }
+
+            var cancelledStatus = await _unitOfWork.Repository<ReservationStatus>()
+                .Entities
+                .SingleOrDefaultAsync(
+                    status => status.StatusName == CancelledReservationStatus,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    $"Required {nameof(ReservationStatus)} '{CancelledReservationStatus}' is not configured.");
+
+            reservation.StatusId = cancelledStatus.StatusId;
+            reservation.Status = cancelledStatus;
+            reservation.UpdatedAt = now.UtcDateTime;
+
+            await _notificationService.QueueForActiveStaffAsync(
+                new NotificationDraft(
+                    "Reservation cancelled",
+                    $"{reservation.GuestName} cancelled the reservation for {reservation.NumberOfGuests} guest(s) on {reservation.Date:dd/MM/yyyy} at {reservation.Time:HH:mm}.",
+                    NotificationTypes.ReservationCancelled),
+                cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return MapReservation(reservation);
         }
         catch
         {
@@ -518,6 +627,75 @@ public sealed class ReservationService : IReservationService
                 $"{parameterName} is required.",
                 parameterName)
             : value.Trim();
+
+    private async Task EnsureActiveCustomerAsync(
+        int customerUserId,
+        CancellationToken cancellationToken)
+    {
+        var isActiveCustomer = await _unitOfWork.Repository<User>()
+            .Entities
+            .AsNoTracking()
+            .AnyAsync(
+                user =>
+                    user.UserId == customerUserId &&
+                    user.IsActive &&
+                    user.Role.RoleName == CustomerRoleName,
+                cancellationToken);
+        if (!isActiveCustomer)
+        {
+            throw new UnauthorizedAccessException(
+                "The authenticated customer account is not active or valid.");
+        }
+    }
+
+    private static ReservationDto MapReservation(Reservation reservation)
+    {
+        var customerUserId = reservation.UserId
+            ?? throw new InvalidOperationException(
+                "A customer reservation must have an owner.");
+        var startAt = ToVietnamDateTimeOffset(reservation.Date, reservation.Time);
+
+        return new ReservationDto(
+            reservation.ReservationId,
+            customerUserId,
+            reservation.Date,
+            reservation.Time,
+            reservation.NumberOfGuests,
+            reservation.GuestName,
+            reservation.GuestPhoneNumber,
+            reservation.Note,
+            reservation.Status.StatusName,
+            ReservationDurationMinutes,
+            startAt,
+            startAt.AddMinutes(ReservationDurationMinutes),
+            new SuggestedTableDto(
+                reservation.Table.TableId,
+                reservation.Table.TableName,
+                reservation.Table.Capacity,
+                reservation.Table.Area,
+                reservation.Table.Description),
+            reservation.CreatedAt);
+    }
+
+    private static void ValidateCustomerUserId(int customerUserId)
+    {
+        if (customerUserId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(customerUserId),
+                "Customer user id must be greater than zero.");
+        }
+    }
+
+    private static void ValidateReservationId(int reservationId)
+    {
+        if (reservationId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(reservationId),
+                "Reservation id must be greater than zero.");
+        }
+    }
 
     private static TStatus GetRequiredStatus<TStatus>(
         IReadOnlyDictionary<string, TStatus> statuses,
