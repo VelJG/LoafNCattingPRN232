@@ -3,21 +3,21 @@ using System.ComponentModel.DataAnnotations;
 namespace LoafNCatting.Application.Contracts;
 
 public sealed record RegisterRequest(
-    [property: Required, MaxLength(255)] string Name,
-    [property: Required, EmailAddress, MaxLength(255)] string Email,
-    [property: Required, MinLength(8)] string Password,
-    [property: Required, MaxLength(20)] string PhoneNumber,
+    [param: Required, MaxLength(255)] string Name,
+    [param: Required, EmailAddress, MaxLength(255)] string Email,
+    [param: Required, MinLength(8)] string Password,
+    [param: Required, MaxLength(20)] string PhoneNumber,
     string? Address);
 
 public sealed record LoginRequest(
-    [property: Required, EmailAddress, MaxLength(255)] string Email,
-    [property: Required] string Password);
+    [param: Required, EmailAddress, MaxLength(255)] string Email,
+    [param: Required] string Password);
 
 public sealed record CreateStaffRequest(
-    [property: Required, MaxLength(255)] string Name,
-    [property: Required, EmailAddress, MaxLength(255)] string Email,
-    [property: Required, MinLength(8)] string Password,
-    [property: Required, MaxLength(20)] string PhoneNumber,
+    [param: Required, MaxLength(255)] string Name,
+    [param: Required, EmailAddress, MaxLength(255)] string Email,
+    [param: Required, MinLength(8)] string Password,
+    [param: Required, MaxLength(20)] string PhoneNumber,
     string? Address);
 
 public sealed record UserDto(

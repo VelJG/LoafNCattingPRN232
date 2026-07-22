@@ -16,15 +16,16 @@ public sealed class AuthContractTests
             "0900000001",
             null);
 
-        var results = new List<ValidationResult>();
-        var valid = Validator.TryValidateObject(
-            request,
-            new ValidationContext(request),
-            results,
-            validateAllProperties: true);
+        var passwordParameter = typeof(RegisterRequest)
+            .GetConstructors()
+            .Single()
+            .GetParameters()
+            .Single(parameter => parameter.Name == "Password");
+        var minimumLength = passwordParameter
+            .GetCustomAttributes(typeof(MinLengthAttribute), inherit: false)
+            .Cast<MinLengthAttribute>()
+            .Single();
 
-        Assert.IsFalse(valid);
-        Assert.IsTrue(results.Any(result =>
-            result.MemberNames.Contains(nameof(RegisterRequest.Password))));
+        Assert.IsFalse(minimumLength.IsValid(request.Password));
     }
 }

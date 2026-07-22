@@ -1,41 +1,88 @@
-﻿using LoafNCatting.Caching.Extensions;
+using System.Text;
+using LoafNCatting.Application.Contracts;
+using LoafNCatting.Caching.Extensions;
 using LoafNCatting.Services.Extensions;
+using LoafNCatting.WebApi.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddCacheServices();
 builder.Services.AddLoafNCattingDatabase(builder.Configuration);
 builder.Services.AddLoafNCattingServices();
-builder.Services.AddCors(options =>
+
+var jwtSection = builder.Configuration.GetSection(JwtSettings.SectionName);
+var jwtSettings = jwtSection.Get<JwtSettings>()
+    ?? throw new InvalidOperationException("JWT configuration is missing.");
+if (string.IsNullOrWhiteSpace(jwtSettings.Issuer) ||
+    string.IsNullOrWhiteSpace(jwtSettings.Audience) ||
+    Encoding.UTF8.GetByteCount(jwtSettings.SigningKey) < 32 ||
+    jwtSettings.AccessTokenMinutes <= 0)
 {
-    options.AddPolicy("FrontendDev", policy =>
+    throw new InvalidOperationException(
+        "JWT configuration requires issuer, audience, a signing key of at least 32 bytes, and a positive lifetime.");
+}
+
+builder.Services.AddOptions<JwtSettings>()
+    .Bind(jwtSection)
+    .Validate(
+        settings => !string.IsNullOrWhiteSpace(settings.Issuer) &&
+            !string.IsNullOrWhiteSpace(settings.Audience) &&
+            Encoding.UTF8.GetByteCount(settings.SigningKey) >= 32 &&
+            settings.AccessTokenMinutes > 0,
+        "JWT configuration is invalid.")
+    .ValidateOnStart();
+builder.Services.AddOptions<BootstrapAdminSettings>()
+    .Bind(builder.Configuration.GetSection(BootstrapAdminSettings.SectionName));
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        policy
-            .WithOrigins(
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:4173",
-                "http://127.0.0.1:4173")
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtSettings.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwtSettings.Audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtSettings.SigningKey)),
+            ValidateLifetime = true,
+            RequireExpirationTime = true,
+            RequireSignedTokens = true,
+            ClockSkew = TimeSpan.Zero,
+            NameClaimType = "name",
+            RoleClaimType = AuthClaimTypes.Role
+        };
     });
-});
+builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("ReactDev", policy => policy
-        .WithOrigins("http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173")
+    options.AddPolicy("FrontendDev", policy => policy
+        .WithOrigins(
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:4173")
         .AllowAnyHeader()
         .AllowAnyMethod());
 });
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddHostedService<AdminBootstrapHostedService>();
+}
+
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -43,11 +90,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendDev");
-
-app.UseCors("ReactDev");
-
+app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
+
+public partial class Program;
