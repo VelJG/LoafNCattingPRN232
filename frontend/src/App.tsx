@@ -13,7 +13,12 @@ import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { CatsPage } from './pages/customer/CatsPage'
+import { CatDetailPage } from './pages/customer/CatDetailPage'
+import { ChatPage } from './pages/customer/ChatPage'
+import { LocationPage } from './pages/customer/LocationPage'
 import { MenuPage } from './pages/customer/MenuPage'
+import { NotificationsPage } from './pages/customer/NotificationsPage'
+import { ProfilePage } from './pages/customer/ProfilePage'
 import { ReservationPage } from './pages/customer/ReservationPage'
 import { LandingPage } from './pages/public/LandingPage'
 
@@ -47,7 +52,12 @@ function App() {
         <Route element={<CustomerLayout />}>
           <Route path="menu" element={<MenuPage />} />
           <Route path="cats" element={<CatsPage />} />
+          <Route path="cats/:catId" element={<CatDetailPage />} />
           <Route path="reservations" element={<ReservationPage />} />
+          <Route path="location" element={<LocationPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Route>
 

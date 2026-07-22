@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +8,7 @@ import { catalogRepository } from '../../services/catalogRepository'
 import { CartProvider } from '../../state/CartContext'
 import type { Product } from '../../types/models'
 import { MenuPage } from './MenuPage'
+import { ProfilePage } from './ProfilePage'
 
 const customerSession = {
   token: 'customer-token',
@@ -53,6 +54,7 @@ function renderCustomer(logout: AuthContextValue['logout'] = vi.fn()) {
             <Route path="/" element={<p>Landing destination</p>} />
             <Route element={<CustomerLayout />}>
               <Route path="/menu" element={<MenuPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -66,15 +68,27 @@ afterEach(() => {
 })
 
 describe('customer experience', () => {
-  it('shows the signed-in customer and logs out without exposing admin navigation', async () => {
+  it('matches the customer header and moves logout into the profile screen', async () => {
     vi.spyOn(catalogRepository, 'listCategories').mockResolvedValue([])
     vi.spyOn(catalogRepository, 'listProducts').mockResolvedValue([product])
     const logout = vi.fn().mockResolvedValue(undefined)
     renderCustomer(logout)
 
-    expect(await screen.findByText('Minh Anh')).toBeInTheDocument()
+    expect(await screen.findByText('MA')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: "Loaf'N Catting" })).toHaveTextContent('Loaf’N Catting')
+    expect(screen.getByText('THỰC ĐƠN HÔM NAY')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /đặt bàn ngay/i })).toBeInTheDocument()
+    expect(screen.queryByText('QUẢN TRỊ')).not.toBeInTheDocument()
     expect(screen.queryByText(/staff preview/i)).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('navigation', { name: /khách hàng/i }))
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['THỰC ĐƠN', 'ĐẶT BÀN', 'MÈO', 'VỊ TRÍ', 'THÔNG BÁO', 'TRÒ CHUYỆN'])
+    expect(screen.queryByRole('button', { name: /đăng xuất/i })).not.toBeInTheDocument()
 
+    await userEvent.click(screen.getByRole('link', { name: /tài khoản minh anh/i }))
+    expect(await screen.findByRole('heading', { name: 'Minh Anh' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /đăng xuất/i }))
 
     expect(logout).toHaveBeenCalledOnce()
@@ -136,5 +150,30 @@ describe('customer experience', () => {
 
     expect(await screen.findByRole('button', { name: 'Cà phê' })).toBeInTheDocument()
     expect(listCategories).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows backend stock state and prevents adding an unavailable product', async () => {
+    vi.spyOn(catalogRepository, 'listCategories').mockResolvedValue([])
+    vi.spyOn(catalogRepository, 'listProducts').mockResolvedValue([
+      { ...product, stock: 0, available: false },
+    ])
+    renderCustomer()
+
+    expect(await screen.findByText('HẾT MÓN')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /thêm caramel catpuccino/i }),
+    ).toBeDisabled()
+  })
+
+  it('replaces an unavailable backend image with the designed placeholder', async () => {
+    vi.spyOn(catalogRepository, 'listCategories').mockResolvedValue([])
+    vi.spyOn(catalogRepository, 'listProducts').mockResolvedValue([product])
+    renderCustomer()
+
+    fireEvent.error(await screen.findByRole('img', { name: product.name }))
+
+    expect(
+      screen.getByRole('img', { name: `Ảnh minh họa ${product.name}` }),
+    ).toBeInTheDocument()
   })
 })

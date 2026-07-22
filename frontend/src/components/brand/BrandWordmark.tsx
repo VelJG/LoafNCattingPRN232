@@ -15,7 +15,7 @@ export function BrandWordmark({
       to={to}
       aria-label="Loaf'N Catting"
     >
-      Loaf<span>'</span>N Catting
+      Loaf<span>’</span>N Catting
     </Link>
   )
 }

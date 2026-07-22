@@ -1,29 +1,31 @@
 import { useState } from 'react'
-import { MdLogout, MdMenu, MdPerson, MdShoppingBag } from 'react-icons/md'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { MdMenu, MdShoppingBag } from 'react-icons/md'
+import { NavLink, Outlet } from 'react-router-dom'
 import { CartDrawer } from '../components/CartDrawer'
 import { BrandWordmark } from '../components/brand/BrandWordmark'
 import { useAuth } from '../features/auth/useAuth'
 import { useCart } from '../state/CartContext'
 
 const customerNavigation = [
-  { to: '/menu', label: 'Thực đơn' },
-  { to: '/cats', label: 'Gặp các bé mèo' },
-  { to: '/reservations', label: 'Đặt bàn' },
+  { to: '/menu', label: 'THỰC ĐƠN' },
+  { to: '/reservations', label: 'ĐẶT BÀN' },
+  { to: '/cats', label: 'MÈO' },
+  { to: '/location', label: 'VỊ TRÍ' },
+  { to: '/notifications', label: 'THÔNG BÁO' },
+  { to: '/chat', label: 'TRÒ CHUYỆN' },
 ]
+
+function initials(name = '') {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'LN'
+  if (parts.length === 1) return parts[0].slice(0, 2).toLocaleUpperCase('vi-VN')
+  return `${parts[0][0]}${parts.at(-1)?.[0] ?? ''}`.toLocaleUpperCase('vi-VN')
+}
 
 export function CustomerLayout() {
   const cart = useCart()
   const auth = useAuth()
-  const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [loggingOut, setLoggingOut] = useState(false)
-
-  const handleLogout = async () => {
-    setLoggingOut(true)
-    await auth.logout()
-    navigate('/', { replace: true })
-  }
 
   return (
     <div className="customer-v2 site-shell">
@@ -32,7 +34,7 @@ export function CustomerLayout() {
         <div className="site-header__inner">
           <BrandWordmark to="/menu" />
           <button
-            className="mobile-menu-button"
+            className="mobile-menu-button customer-mobile-menu"
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
             aria-label="Mở điều hướng"
@@ -51,10 +53,6 @@ export function CustomerLayout() {
             ))}
           </nav>
           <div className="header-actions">
-            <div className="customer-account" title={auth.session?.user.email}>
-              <MdPerson />
-              <span>{auth.session?.user.name}</span>
-            </div>
             <button
               className="header-cart-button"
               type="button"
@@ -64,29 +62,20 @@ export function CustomerLayout() {
               aria-controls="shopping-cart"
             >
               <MdShoppingBag />
-              <span>Giỏ hàng</span>
               {cart.count > 0 && <strong>{cart.count}</strong>}
             </button>
-            <button
-              className="customer-logout"
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              aria-label="Đăng xuất"
+            <NavLink
+              to="/profile"
+              className="customer-avatar"
+              title={`${auth.session?.user.name ?? ''} · ${auth.session?.user.email ?? ''}`}
+              aria-label={`Tài khoản ${auth.session?.user.name ?? ''}`}
             >
-              <MdLogout />
-            </button>
+              {initials(auth.session?.user.name)}
+            </NavLink>
           </div>
         </div>
       </header>
       <main id="main-content"><Outlet /></main>
-      <footer className="site-footer">
-        <div>
-          <BrandWordmark to="/menu" />
-          <p>Cà phê ấm, mèo hiền và những ngày thật chậm.</p>
-        </div>
-        <span>© 2026 Loaf'N Catting · Đà Nẵng</span>
-      </footer>
       <CartDrawer />
     </div>
   )
