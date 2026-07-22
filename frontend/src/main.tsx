@@ -8,6 +8,7 @@ import './styles/v2-tokens.css'
 import './styles/v2-base.css'
 import './styles/v2-landing.css'
 import './styles/v2-auth.css'
+import './styles/v2-customer.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
