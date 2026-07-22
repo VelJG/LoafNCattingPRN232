@@ -166,6 +166,31 @@ public sealed class NotificationServiceTests
     }
 
     [TestMethod]
+    public async Task QueueForUserIfMissingAsync_DoesNotDuplicatePersistedEvent()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 3, isActive: true);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+        var draft = new NotificationDraft(
+            "Reservation expired",
+            "Reservation #42 expired.",
+            NotificationTypes.ReservationExpired);
+
+        var firstQueued = await service.QueueForUserIfMissingAsync(10, draft);
+        await data.UnitOfWork.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var secondQueued = await service.QueueForUserIfMissingAsync(10, draft);
+        await data.UnitOfWork.SaveChangesAsync();
+
+        Assert.IsTrue(firstQueued);
+        Assert.IsFalse(secondQueued);
+        Assert.AreEqual(1, await data.DbContext.Notifications.CountAsync());
+    }
+
+    [TestMethod]
     public async Task QueueForActiveStaffAsync_QueuesOneNotificationPerActiveStaffOnly()
     {
         await using var data = new TestDataContext();
@@ -198,6 +223,32 @@ public sealed class NotificationServiceTests
         Assert.IsTrue(notifications.All(notification => !notification.IsRead));
         Assert.IsTrue(notifications.All(notification =>
             notification.Type == NotificationTypes.ReservationCreated));
+    }
+
+    [TestMethod]
+    public async Task QueueForActiveStaffIfMissingAsync_DoesNotDuplicateEventPerStaff()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        AddUser(data, userId: 10, roleId: 2, isActive: true);
+        AddUser(data, userId: 11, roleId: 2, isActive: true);
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var service = CreateService(data);
+        var draft = new NotificationDraft(
+            "Reservation ending soon",
+            "Reservation #42 at table A1 will end at 18:30.",
+            NotificationTypes.ReservationEndingSoon);
+
+        var firstCount = await service.QueueForActiveStaffIfMissingAsync(draft);
+        await data.UnitOfWork.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var secondCount = await service.QueueForActiveStaffIfMissingAsync(draft);
+        await data.UnitOfWork.SaveChangesAsync();
+
+        Assert.AreEqual(2, firstCount);
+        Assert.AreEqual(0, secondCount);
+        Assert.AreEqual(2, await data.DbContext.Notifications.CountAsync());
     }
 
     [TestMethod]

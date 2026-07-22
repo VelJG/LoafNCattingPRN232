@@ -158,6 +158,51 @@ public sealed class NotificationService : INotificationService
             saveChanges: false);
     }
 
+    public async Task<bool> QueueForUserIfMissingAsync(
+        int userId,
+        NotificationDraft draft,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(userId),
+                "Notification recipient id must be greater than zero.");
+        }
+
+        var normalized = NormalizeDraft(draft);
+        var recipientExists = await _unitOfWork.Repository<User>()
+            .Entities
+            .AsNoTracking()
+            .AnyAsync(
+                user => user.UserId == userId && user.IsActive,
+                cancellationToken);
+        if (!recipientExists)
+        {
+            throw new KeyNotFoundException("Active notification recipient was not found.");
+        }
+
+        var alreadyExists = await _unitOfWork.Repository<Notification>()
+            .Entities
+            .AsNoTracking()
+            .AnyAsync(
+                notification =>
+                    notification.UserId == userId &&
+                    notification.Title == normalized.Title &&
+                    notification.Content == normalized.Content &&
+                    notification.Type == normalized.Type,
+                cancellationToken);
+        if (alreadyExists)
+        {
+            return false;
+        }
+
+        await _unitOfWork.Repository<Notification>().InsertAsync(
+            CreateNotification(userId, normalized),
+            saveChanges: false);
+        return true;
+    }
+
     public async Task<int> QueueForActiveStaffAsync(
         NotificationDraft draft,
         CancellationToken cancellationToken = default)
@@ -181,6 +226,53 @@ public sealed class NotificationService : INotificationService
         var notifications = staffUserIds
             .Select(userId => CreateNotification(userId, normalized))
             .ToList();
+        await _unitOfWork.Repository<Notification>().InsertRangeAsync(
+            notifications,
+            saveChanges: false);
+        return notifications.Count;
+    }
+
+    public async Task<int> QueueForActiveStaffIfMissingAsync(
+        NotificationDraft draft,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeDraft(draft);
+        var staffUserIds = await _unitOfWork.Repository<User>()
+            .Entities
+            .AsNoTracking()
+            .Where(user =>
+                user.IsActive &&
+                user.Role.RoleName == StaffRoleName)
+            .OrderBy(user => user.UserId)
+            .Select(user => user.UserId)
+            .ToListAsync(cancellationToken);
+        if (staffUserIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var existingRecipientIds = await _unitOfWork.Repository<Notification>()
+            .Entities
+            .AsNoTracking()
+            .Where(notification =>
+                notification.UserId.HasValue &&
+                staffUserIds.Contains(notification.UserId.Value) &&
+                notification.Title == normalized.Title &&
+                notification.Content == normalized.Content &&
+                notification.Type == normalized.Type)
+            .Select(notification => notification.UserId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var existingRecipientSet = existingRecipientIds.ToHashSet();
+        var notifications = staffUserIds
+            .Where(userId => !existingRecipientSet.Contains(userId))
+            .Select(userId => CreateNotification(userId, normalized))
+            .ToList();
+        if (notifications.Count == 0)
+        {
+            return 0;
+        }
+
         await _unitOfWork.Repository<Notification>().InsertRangeAsync(
             notifications,
             saveChanges: false);

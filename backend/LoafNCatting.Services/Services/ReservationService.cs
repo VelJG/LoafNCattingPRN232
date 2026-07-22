@@ -15,7 +15,6 @@ public sealed class ReservationService : IReservationService
     private const int MinimumCustomerCancellationMinutes = 120;
     private const int TableHoldMinutes = 30;
     private const int EndingSoonReminderMinutes = 10;
-    private const int ReminderDetectionWindowMinutes = 1;
     private const int MaximumGuestNameLength = 255;
     private const int MaximumGuestPhoneNumberLength = 20;
 
@@ -832,6 +831,7 @@ public sealed class ReservationService : IReservationService
 
             var candidates = await _unitOfWork.Repository<Reservation>()
                 .Entities
+                .Include(reservation => reservation.User)
                 .Include(reservation => reservation.Status)
                 .Include(reservation => reservation.Table)
                 .ThenInclude(table => table.TableStatus)
@@ -868,6 +868,14 @@ public sealed class ReservationService : IReservationService
                         reservation.Status = expiredStatus;
                         reservation.UpdatedAt = now.UtcDateTime;
                         markedExpired++;
+
+                        await QueueCustomerNotificationIfMissingAsync(
+                            reservation,
+                            new NotificationDraft(
+                                "Reservation expired",
+                                $"Reservation #{reservation.ReservationId} on {reservation.Date:dd/MM/yyyy} at {reservation.Time:HH:mm} expired because it was not confirmed before its start time.",
+                                NotificationTypes.ReservationExpired),
+                            cancellationToken);
                     }
 
                     continue;
@@ -899,11 +907,20 @@ public sealed class ReservationService : IReservationService
                             AvailableTableStatus,
                             StringComparison.OrdinalIgnoreCase))
                         {
-                            conflicts.Add(new ReservationLifecycleConflictDto(
-                                reservation.ReservationId,
-                                reservation.TableId,
-                                $"Table was not released because its current status is '{reservation.Table.TableStatus.StatusName}'."));
+                            await AddLifecycleConflictAsync(
+                                conflicts,
+                                reservation,
+                                $"Table was not released because its current status is '{reservation.Table.TableStatus.StatusName}'.",
+                                cancellationToken);
                         }
+
+                        await QueueCustomerNotificationIfMissingAsync(
+                            reservation,
+                            new NotificationDraft(
+                                "Reservation marked as no-show",
+                                $"Reservation #{reservation.ReservationId} on {reservation.Date:dd/MM/yyyy} at {reservation.Time:HH:mm} was marked as no-show because check-in did not occur within 30 minutes.",
+                                NotificationTypes.ReservationNoShow),
+                            cancellationToken);
 
                         continue;
                     }
@@ -924,10 +941,11 @@ public sealed class ReservationService : IReservationService
                             ReservedTableStatus,
                             StringComparison.OrdinalIgnoreCase))
                         {
-                            conflicts.Add(new ReservationLifecycleConflictDto(
-                                reservation.ReservationId,
-                                reservation.TableId,
-                                $"Table was not reserved because its current status is '{reservation.Table.TableStatus.StatusName}'."));
+                            await AddLifecycleConflictAsync(
+                                conflicts,
+                                reservation,
+                                $"Table was not reserved because its current status is '{reservation.Table.TableStatus.StatusName}'.",
+                                cancellationToken);
                         }
                     }
 
@@ -939,9 +957,14 @@ public sealed class ReservationService : IReservationService
                         CheckedInReservationStatus,
                         StringComparison.OrdinalIgnoreCase) &&
                     now >= endAt.AddMinutes(-EndingSoonReminderMinutes) &&
-                    now < endAt.AddMinutes(
-                        -EndingSoonReminderMinutes + ReminderDetectionWindowMinutes))
+                    now < endAt)
                 {
+                    await _notificationService.QueueForActiveStaffIfMissingAsync(
+                        new NotificationDraft(
+                            "Reservation ending soon",
+                            $"Reservation #{reservation.ReservationId} at table {reservation.Table.TableName} will reach its 90-minute end time at {endAt:HH:mm}.",
+                            NotificationTypes.ReservationEndingSoon),
+                        cancellationToken);
                     endingSoonReservationIds.Add(reservation.ReservationId);
                 }
             }
@@ -1201,6 +1224,35 @@ public sealed class ReservationService : IReservationService
                 draft,
                 cancellationToken)
             : Task.CompletedTask;
+
+    private Task QueueCustomerNotificationIfMissingAsync(
+        Reservation reservation,
+        NotificationDraft draft,
+        CancellationToken cancellationToken)
+        => reservation.UserId.HasValue && reservation.User?.IsActive == true
+            ? _notificationService.QueueForUserIfMissingAsync(
+                reservation.UserId.Value,
+                draft,
+                cancellationToken)
+            : Task.CompletedTask;
+
+    private async Task AddLifecycleConflictAsync(
+        ICollection<ReservationLifecycleConflictDto> conflicts,
+        Reservation reservation,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        conflicts.Add(new ReservationLifecycleConflictDto(
+            reservation.ReservationId,
+            reservation.TableId,
+            reason));
+        await _notificationService.QueueForActiveStaffIfMissingAsync(
+            new NotificationDraft(
+                "Reservation lifecycle conflict",
+                $"Reservation #{reservation.ReservationId}, table {reservation.Table.TableName}: {reason}",
+                NotificationTypes.ReservationLifecycleConflict),
+            cancellationToken);
+    }
 
     private static void EnsureReservationStatus(
         Reservation reservation,

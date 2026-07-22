@@ -342,9 +342,20 @@ public sealed class ReservationStaffServiceTests
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Notification failure.");
 
+        public Task<bool> QueueForUserIfMissingAsync(
+            int userId,
+            NotificationDraft draft,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
         public Task<int> QueueForActiveStaffAsync(
             NotificationDraft draft,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Notification failure.");
+
+        public Task<int> QueueForActiveStaffIfMissingAsync(
+            NotificationDraft draft,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
     }
 }

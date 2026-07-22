@@ -1,3 +1,6 @@
+using LoafNCatting.Application.Contracts;
+using LoafNCatting.Application.Interfaces.Services;
+using LoafNCatting.Entity.Models;
 using LoafNCatting.Services.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -43,6 +46,9 @@ public sealed class ReservationLifecycleServiceTests
         Assert.AreEqual(0, result.TablesReleased);
         Assert.AreEqual(ReservationTestData.ExpiredStatusId, reservation.StatusId);
         Assert.AreEqual(ReservationTestData.AvailableTableStatusId, table.TableStatusId);
+        var notification = await data.DbContext.Notifications.AsNoTracking().SingleAsync();
+        Assert.AreEqual(10, notification.UserId);
+        Assert.AreEqual(NotificationTypes.ReservationExpired, notification.Type);
     }
 
     [TestMethod]
@@ -79,6 +85,9 @@ public sealed class ReservationLifecycleServiceTests
         Assert.AreEqual(1, result.TablesReleased);
         Assert.AreEqual(ReservationTestData.NoShowStatusId, reservation.StatusId);
         Assert.AreEqual(ReservationTestData.AvailableTableStatusId, table.TableStatusId);
+        var notification = await data.DbContext.Notifications.AsNoTracking().SingleAsync();
+        Assert.AreEqual(10, notification.UserId);
+        Assert.AreEqual(NotificationTypes.ReservationNoShow, notification.Type);
     }
 
     [TestMethod]
@@ -109,10 +118,15 @@ public sealed class ReservationLifecycleServiceTests
         var service = CreateService(data, hour: 10, minute: 20);
 
         var result = await service.ProcessDueReservationsAsync();
+        await service.ProcessDueReservationsAsync();
 
         CollectionAssert.AreEqual(
             new[] { 1 },
             result.EndingSoonReservationIds.ToArray());
+        var notification = await data.DbContext.Notifications.AsNoTracking().SingleAsync();
+        Assert.AreEqual(20, notification.UserId);
+        Assert.AreEqual(NotificationTypes.ReservationEndingSoon, notification.Type);
+        StringAssert.Contains(notification.Content, "Reservation #1");
     }
 
     [TestMethod]
@@ -127,11 +141,18 @@ public sealed class ReservationLifecycleServiceTests
         var service = CreateService(data, hour: 9, minute: 0);
 
         var result = await service.ProcessDueReservationsAsync();
+        var secondResult = await service.ProcessDueReservationsAsync();
 
         var table = await data.DbContext.RestaurantTables.SingleAsync();
         Assert.AreEqual(currentTableStatusId, table.TableStatusId);
         Assert.HasCount(1, result.Conflicts);
+        Assert.HasCount(1, secondResult.Conflicts);
         Assert.AreEqual(0, result.TablesReserved);
+        var notification = await data.DbContext.Notifications.AsNoTracking().SingleAsync();
+        Assert.AreEqual(20, notification.UserId);
+        Assert.AreEqual(
+            NotificationTypes.ReservationLifecycleConflict,
+            notification.Type);
     }
 
     [TestMethod]
@@ -149,6 +170,34 @@ public sealed class ReservationLifecycleServiceTests
         Assert.AreEqual(0, secondResult.ReservationsMarkedExpired);
         Assert.AreEqual(0, secondResult.TablesReleased);
         Assert.HasCount(0, secondResult.Conflicts);
+        Assert.AreEqual(
+            1,
+            await data.DbContext.Notifications.CountAsync(notification =>
+                notification.Type == NotificationTypes.ReservationExpired));
+    }
+
+    [TestMethod]
+    public async Task ProcessDueReservationsAsync_WhenCustomerNotificationFails_RollsBackExpiration()
+    {
+        await using var data = await CreateScenarioAsync(
+            ReservationTestData.PendingStatusId,
+            ReservationTestData.AvailableTableStatusId);
+        var clock = new TestTimeProvider(
+            ReservationTestData.VietnamTime(2026, 7, 22, 9, 0));
+        var service = new ReservationService(
+            data.UnitOfWork,
+            new ThrowingLifecycleNotificationService(),
+            clock);
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            service.ProcessDueReservationsAsync());
+
+        Assert.AreEqual(
+            ReservationTestData.PendingStatusId,
+            await data.DbContext.Reservations
+                .Select(reservation => reservation.StatusId)
+                .SingleAsync());
+        Assert.AreEqual(0, await data.DbContext.Notifications.CountAsync());
     }
 
     private static async Task<TestDataContext> CreateScenarioAsync(
@@ -156,19 +205,23 @@ public sealed class ReservationLifecycleServiceTests
         int tableStatusId)
     {
         var data = new TestDataContext();
+        await data.SeedRolesAsync();
         await ReservationTestData.SeedStatusesAsync(data);
+        AddUser(data, userId: 10, roleId: 3);
+        AddUser(data, userId: 20, roleId: 2);
         ReservationTestData.AddTable(
             data,
             tableId: 1,
             capacity: 2,
             tableStatusId: tableStatusId);
-        ReservationTestData.AddReservation(
+        var reservation = ReservationTestData.AddReservation(
             data,
             reservationId: 1,
             tableId: 1,
             ReservationDate,
             new TimeOnly(9, 0),
             reservationStatusId);
+        reservation.UserId = 10;
         await data.DbContext.SaveChangesAsync();
         data.DbContext.ChangeTracker.Clear();
         return data;
@@ -185,5 +238,69 @@ public sealed class ReservationLifecycleServiceTests
             data.UnitOfWork,
             new NotificationService(data.UnitOfWork, clock),
             clock);
+    }
+
+    private static void AddUser(
+        TestDataContext data,
+        int userId,
+        int roleId)
+        => data.DbContext.Users.Add(new User
+        {
+            UserId = userId,
+            Name = $"User {userId}",
+            Email = $"user{userId}@example.com",
+            Password = "hashed-password",
+            PhoneNumber = $"090{userId:D7}",
+            RoleId = roleId,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            IsEmailVerified = false
+        });
+
+    private sealed class ThrowingLifecycleNotificationService : INotificationService
+    {
+        public Task<IReadOnlyList<NotificationDto>> GetForUserAsync(
+            int userId,
+            bool? isRead = null,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<UnreadNotificationCountDto> GetUnreadCountAsync(
+            int userId,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<NotificationDto> MarkAsReadAsync(
+            int userId,
+            int notificationId,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<MarkNotificationsReadResultDto> MarkAllAsReadAsync(
+            int userId,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task QueueForUserAsync(
+            int userId,
+            NotificationDraft draft,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Notification failure.");
+
+        public Task<bool> QueueForUserIfMissingAsync(
+            int userId,
+            NotificationDraft draft,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Notification failure.");
+
+        public Task<int> QueueForActiveStaffAsync(
+            NotificationDraft draft,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Notification failure.");
+
+        public Task<int> QueueForActiveStaffIfMissingAsync(
+            NotificationDraft draft,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Notification failure.");
     }
 }

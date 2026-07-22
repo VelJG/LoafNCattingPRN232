@@ -32,10 +32,27 @@ public interface INotificationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Adds a notification only when the same recipient, title, content, and type
+    /// have not already been persisted. The caller owns the transaction and commit.
+    /// </summary>
+    Task<bool> QueueForUserIfMissingAsync(
+        int userId,
+        NotificationDraft draft,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Adds one notification per active Staff account to the current unit of work
     /// without committing it, and returns the number of queued recipients.
     /// </summary>
     Task<int> QueueForActiveStaffAsync(
+        NotificationDraft draft,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds the notification only for active Staff recipients that do not already
+    /// have the same title, content, and type. The caller owns the transaction and commit.
+    /// </summary>
+    Task<int> QueueForActiveStaffIfMissingAsync(
         NotificationDraft draft,
         CancellationToken cancellationToken = default);
 }
