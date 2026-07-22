@@ -23,6 +23,35 @@ public interface IReservationService
         int reservationId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<StoreReservationDto>> GetForStoreAsync(
+        int operatorUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<StoreReservationDto> GetForStoreByIdAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
+    Task<StoreReservationDto> ConfirmByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
+    Task<StoreReservationDto> CancelByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
+    Task<StoreReservationDto> CheckInByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
+    Task<StoreReservationDto> CompleteByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
     Task<ReservationAvailabilityDto> GetAvailabilityAsync(
         ReservationAvailabilityRequest request,
         CancellationToken cancellationToken = default);

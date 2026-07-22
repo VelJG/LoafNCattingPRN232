@@ -60,6 +60,26 @@ public sealed record ReservationDto(
     SuggestedTableDto Table,
     DateTime CreatedAtUtc);
 
+public sealed record StoreReservationDto(
+    int ReservationId,
+    int? CustomerUserId,
+    string? CustomerName,
+    string? CustomerEmail,
+    DateOnly Date,
+    TimeOnly Time,
+    int NumberOfGuests,
+    string GuestName,
+    string GuestPhoneNumber,
+    string? Note,
+    string Status,
+    int DurationMinutes,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    SuggestedTableDto Table,
+    string TableStatus,
+    DateTime CreatedAtUtc,
+    DateTime? UpdatedAtUtc);
+
 public sealed record ReservationLifecycleConflictDto(
     int ReservationId,
     int TableId,

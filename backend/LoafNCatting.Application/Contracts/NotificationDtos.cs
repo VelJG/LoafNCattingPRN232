@@ -10,6 +10,8 @@ public static class NotificationTypes
     public const string ReservationCreated = "ReservationCreated";
     public const string ReservationConfirmed = "ReservationConfirmed";
     public const string ReservationCancelled = "ReservationCancelled";
+    public const string ReservationCheckedIn = "ReservationCheckedIn";
+    public const string ReservationCompleted = "ReservationCompleted";
     public const string ReservationNoShow = "ReservationNoShow";
     public const string ReservationExpired = "ReservationExpired";
     public const string ReservationEndingSoon = "ReservationEndingSoon";

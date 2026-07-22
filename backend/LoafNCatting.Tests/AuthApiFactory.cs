@@ -19,6 +19,8 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     public const string SigningKey = "integration-test-signing-key-at-least-32-characters";
 
     private readonly string _databaseName = $"api-tests-{Guid.NewGuid():N}";
+    private readonly TestTimeProvider _clock = new(
+        ReservationTestData.VietnamTime(2026, 7, 22, 7, 0));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -41,10 +43,13 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
                     .ConfigureWarnings(warnings => warnings.Ignore(
                         InMemoryEventId.TransactionIgnoredWarning)));
             services.RemoveAll<TimeProvider>();
-            services.AddSingleton<TimeProvider>(new TestTimeProvider(
-                ReservationTestData.VietnamTime(2026, 7, 22, 7, 0)));
+            services.AddSingleton<TimeProvider>(_clock);
         });
     }
+
+    internal void SetVietnamTime(int hour, int minute = 0)
+        => _clock.SetUtcNow(
+            ReservationTestData.VietnamTime(2026, 7, 22, hour, minute));
 
     public async Task SeedRolesAsync()
     {

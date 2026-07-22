@@ -26,10 +26,13 @@ public sealed class ReservationService : IReservationService
     private const string PendingReservationStatus = "Đang chờ";
     private const string ConfirmedReservationStatus = "Đã xác nhận";
     private const string CancelledReservationStatus = "Đã hủy";
+    private const string CompletedReservationStatus = "Hoàn thành";
     private const string CheckedInReservationStatus = "Đã đến";
     private const string NoShowReservationStatus = "Không đến";
     private const string ExpiredReservationStatus = "Hết hạn";
     private const string CustomerRoleName = "Customer";
+    private const string StaffRoleName = "Staff";
+    private const string AdminRoleName = "Admin";
 
     private static readonly string[] BlockingReservationStatuses =
     [
@@ -302,6 +305,343 @@ public sealed class ReservationService : IReservationService
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             return MapReservation(reservation);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<StoreReservationDto>> GetForStoreAsync(
+        int operatorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+
+        var reservations = await _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Include(reservation => reservation.User)
+            .Include(reservation => reservation.Status)
+            .Include(reservation => reservation.Table)
+            .ThenInclude(table => table.TableStatus)
+            .OrderByDescending(reservation => reservation.Date)
+            .ThenByDescending(reservation => reservation.Time)
+            .ThenByDescending(reservation => reservation.ReservationId)
+            .ToListAsync(cancellationToken);
+
+        return reservations
+            .Select(MapStoreReservation)
+            .ToList();
+    }
+
+    public async Task<StoreReservationDto> GetForStoreByIdAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        ValidateReservationId(reservationId);
+        await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+
+        var reservation = await _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Include(current => current.User)
+            .Include(current => current.Status)
+            .Include(current => current.Table)
+            .ThenInclude(table => table.TableStatus)
+            .SingleOrDefaultAsync(
+                current => current.ReservationId == reservationId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation was not found.");
+
+        return MapStoreReservation(reservation);
+    }
+
+    public async Task<StoreReservationDto> ConfirmByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        ValidateReservationId(reservationId);
+        var now = _timeProvider.GetUtcNow().ToOffset(VietnamUtcOffset);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+            var reservation = await GetStoreReservationForUpdateAsync(
+                reservationId,
+                cancellationToken);
+
+            EnsureReservationStatus(
+                reservation,
+                PendingReservationStatus,
+                "Only pending reservations can be confirmed.");
+
+            var startAt = ToVietnamDateTimeOffset(reservation.Date, reservation.Time);
+            if (now >= startAt)
+            {
+                throw new InvalidOperationException(
+                    "A pending reservation cannot be confirmed at or after its start time.");
+            }
+
+            if (string.Equals(
+                reservation.Table.TableStatus.StatusName,
+                MaintenanceTableStatus,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "The assigned table is under maintenance and the reservation cannot be confirmed.");
+            }
+
+            var confirmedStatus = await GetReservationStatusAsync(
+                ConfirmedReservationStatus,
+                cancellationToken);
+            reservation.StatusId = confirmedStatus.StatusId;
+            reservation.Status = confirmedStatus;
+            reservation.UpdatedAt = now.UtcDateTime;
+
+            await QueueCustomerNotificationAsync(
+                reservation,
+                new NotificationDraft(
+                    "Reservation confirmed",
+                    $"Your reservation on {reservation.Date:dd/MM/yyyy} at {reservation.Time:HH:mm} has been confirmed.",
+                    NotificationTypes.ReservationConfirmed),
+                cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return MapStoreReservation(reservation);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<StoreReservationDto> CancelByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        ValidateReservationId(reservationId);
+        var now = _timeProvider.GetUtcNow().ToOffset(VietnamUtcOffset);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+            var reservation = await GetStoreReservationForUpdateAsync(
+                reservationId,
+                cancellationToken);
+
+            var currentStatusName = reservation.Status.StatusName;
+            if (!string.Equals(
+                    currentStatusName,
+                    PendingReservationStatus,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    currentStatusName,
+                    ConfirmedReservationStatus,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Only pending or confirmed reservations can be cancelled by the store.");
+            }
+
+            var cancelledStatus = await GetReservationStatusAsync(
+                CancelledReservationStatus,
+                cancellationToken);
+            reservation.StatusId = cancelledStatus.StatusId;
+            reservation.Status = cancelledStatus;
+            reservation.UpdatedAt = now.UtcDateTime;
+
+            var startAt = ToVietnamDateTimeOffset(reservation.Date, reservation.Time);
+            if (now >= startAt && string.Equals(
+                reservation.Table.TableStatus.StatusName,
+                ReservedTableStatus,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                var availableStatus = await GetTableStatusAsync(
+                    AvailableTableStatus,
+                    cancellationToken);
+                reservation.Table.TableStatusId = availableStatus.TableStatusId;
+                reservation.Table.TableStatus = availableStatus;
+            }
+
+            await QueueCustomerNotificationAsync(
+                reservation,
+                new NotificationDraft(
+                    "Reservation cancelled by store",
+                    $"Your reservation on {reservation.Date:dd/MM/yyyy} at {reservation.Time:HH:mm} has been cancelled by the store.",
+                    NotificationTypes.ReservationCancelled),
+                cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return MapStoreReservation(reservation);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<StoreReservationDto> CheckInByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        ValidateReservationId(reservationId);
+        var now = _timeProvider.GetUtcNow().ToOffset(VietnamUtcOffset);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+            var reservation = await GetStoreReservationForUpdateAsync(
+                reservationId,
+                cancellationToken);
+
+            EnsureReservationStatus(
+                reservation,
+                ConfirmedReservationStatus,
+                "Only confirmed reservations can be checked in.");
+
+            var startAt = ToVietnamDateTimeOffset(reservation.Date, reservation.Time);
+            if (now < startAt)
+            {
+                throw new InvalidOperationException(
+                    "A reservation cannot be checked in before its start time.");
+            }
+
+            if (now >= startAt.AddMinutes(TableHoldMinutes))
+            {
+                throw new InvalidOperationException(
+                    "The 30-minute table hold window has elapsed.");
+            }
+
+            var currentTableStatusName = reservation.Table.TableStatus.StatusName;
+            if (!string.Equals(
+                    currentTableStatusName,
+                    AvailableTableStatus,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    currentTableStatusName,
+                    ReservedTableStatus,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"The assigned table cannot be occupied because its current status is '{currentTableStatusName}'.");
+            }
+
+            var checkedInStatus = await GetReservationStatusAsync(
+                CheckedInReservationStatus,
+                cancellationToken);
+            var occupiedStatus = await GetTableStatusAsync(
+                OccupiedTableStatus,
+                cancellationToken);
+            reservation.StatusId = checkedInStatus.StatusId;
+            reservation.Status = checkedInStatus;
+            reservation.UpdatedAt = now.UtcDateTime;
+            reservation.Table.TableStatusId = occupiedStatus.TableStatusId;
+            reservation.Table.TableStatus = occupiedStatus;
+
+            await QueueCustomerNotificationAsync(
+                reservation,
+                new NotificationDraft(
+                    "Reservation checked in",
+                    $"You have checked in for the reservation at {reservation.Time:HH:mm}.",
+                    NotificationTypes.ReservationCheckedIn),
+                cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return MapStoreReservation(reservation);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public async Task<StoreReservationDto> CompleteByStoreAsync(
+        int operatorUserId,
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOperatorUserId(operatorUserId);
+        ValidateReservationId(reservationId);
+        var now = _timeProvider.GetUtcNow().ToOffset(VietnamUtcOffset);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+            var reservation = await GetStoreReservationForUpdateAsync(
+                reservationId,
+                cancellationToken);
+
+            EnsureReservationStatus(
+                reservation,
+                CheckedInReservationStatus,
+                "Only checked-in reservations can be completed.");
+
+            var currentTableStatusName = reservation.Table.TableStatus.StatusName;
+            if (!string.Equals(
+                    currentTableStatusName,
+                    OccupiedTableStatus,
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(
+                    currentTableStatusName,
+                    AvailableTableStatus,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"The assigned table cannot be released because its current status is '{currentTableStatusName}'.");
+            }
+
+            var completedStatus = await GetReservationStatusAsync(
+                CompletedReservationStatus,
+                cancellationToken);
+            var availableStatus = await GetTableStatusAsync(
+                AvailableTableStatus,
+                cancellationToken);
+            reservation.StatusId = completedStatus.StatusId;
+            reservation.Status = completedStatus;
+            reservation.UpdatedAt = now.UtcDateTime;
+            reservation.Table.TableStatusId = availableStatus.TableStatusId;
+            reservation.Table.TableStatus = availableStatus;
+
+            await QueueCustomerNotificationAsync(
+                reservation,
+                new NotificationDraft(
+                    "Reservation completed",
+                    "Your reservation has been completed. Thank you for visiting Loaf N' Catting.",
+                    NotificationTypes.ReservationCompleted),
+                cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return MapStoreReservation(reservation);
         }
         catch
         {
@@ -648,6 +988,88 @@ public sealed class ReservationService : IReservationService
         }
     }
 
+    private async Task EnsureActiveStoreOperatorAsync(
+        int operatorUserId,
+        CancellationToken cancellationToken)
+    {
+        var isActiveStoreOperator = await _unitOfWork.Repository<User>()
+            .Entities
+            .AsNoTracking()
+            .AnyAsync(
+                user =>
+                    user.UserId == operatorUserId &&
+                    user.IsActive &&
+                    (user.Role.RoleName == StaffRoleName ||
+                     user.Role.RoleName == AdminRoleName),
+                cancellationToken);
+        if (!isActiveStoreOperator)
+        {
+            throw new UnauthorizedAccessException(
+                "The authenticated store operator account is not active or valid.");
+        }
+    }
+
+    private async Task<Reservation> GetStoreReservationForUpdateAsync(
+        int reservationId,
+        CancellationToken cancellationToken)
+        => await _unitOfWork.Repository<Reservation>()
+            .Entities
+            .Include(reservation => reservation.User)
+            .Include(reservation => reservation.Status)
+            .Include(reservation => reservation.Table)
+            .ThenInclude(table => table.TableStatus)
+            .SingleOrDefaultAsync(
+                reservation => reservation.ReservationId == reservationId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation was not found.");
+
+    private async Task<ReservationStatus> GetReservationStatusAsync(
+        string statusName,
+        CancellationToken cancellationToken)
+        => await _unitOfWork.Repository<ReservationStatus>()
+            .Entities
+            .SingleOrDefaultAsync(
+                status => status.StatusName == statusName,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Required {nameof(ReservationStatus)} '{statusName}' is not configured.");
+
+    private async Task<TableStatus> GetTableStatusAsync(
+        string statusName,
+        CancellationToken cancellationToken)
+        => await _unitOfWork.Repository<TableStatus>()
+            .Entities
+            .SingleOrDefaultAsync(
+                status => status.StatusName == statusName,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Required {nameof(TableStatus)} '{statusName}' is not configured.");
+
+    private Task QueueCustomerNotificationAsync(
+        Reservation reservation,
+        NotificationDraft draft,
+        CancellationToken cancellationToken)
+        => reservation.UserId.HasValue && reservation.User?.IsActive == true
+            ? _notificationService.QueueForUserAsync(
+                reservation.UserId.Value,
+                draft,
+                cancellationToken)
+            : Task.CompletedTask;
+
+    private static void EnsureReservationStatus(
+        Reservation reservation,
+        string requiredStatusName,
+        string errorMessage)
+    {
+        if (!string.Equals(
+            reservation.Status.StatusName,
+            requiredStatusName,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+    }
+
     private static ReservationDto MapReservation(Reservation reservation)
     {
         var customerUserId = reservation.UserId
@@ -677,6 +1099,36 @@ public sealed class ReservationService : IReservationService
             reservation.CreatedAt);
     }
 
+    private static StoreReservationDto MapStoreReservation(Reservation reservation)
+    {
+        var startAt = ToVietnamDateTimeOffset(reservation.Date, reservation.Time);
+
+        return new StoreReservationDto(
+            reservation.ReservationId,
+            reservation.UserId,
+            reservation.User?.Name,
+            reservation.User?.Email,
+            reservation.Date,
+            reservation.Time,
+            reservation.NumberOfGuests,
+            reservation.GuestName,
+            reservation.GuestPhoneNumber,
+            reservation.Note,
+            reservation.Status.StatusName,
+            ReservationDurationMinutes,
+            startAt,
+            startAt.AddMinutes(ReservationDurationMinutes),
+            new SuggestedTableDto(
+                reservation.Table.TableId,
+                reservation.Table.TableName,
+                reservation.Table.Capacity,
+                reservation.Table.Area,
+                reservation.Table.Description),
+            reservation.Table.TableStatus.StatusName,
+            reservation.CreatedAt,
+            reservation.UpdatedAt);
+    }
+
     private static void ValidateCustomerUserId(int customerUserId)
     {
         if (customerUserId <= 0)
@@ -694,6 +1146,16 @@ public sealed class ReservationService : IReservationService
             throw new ArgumentOutOfRangeException(
                 nameof(reservationId),
                 "Reservation id must be greater than zero.");
+        }
+    }
+
+    private static void ValidateOperatorUserId(int operatorUserId)
+    {
+        if (operatorUserId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(operatorUserId),
+                "Store operator user id must be greater than zero.");
         }
     }
 
