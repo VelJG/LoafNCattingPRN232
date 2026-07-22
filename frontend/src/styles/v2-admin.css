@@ -170,6 +170,43 @@
 
 .admin-v2 #admin-main { padding: 26px 28px 40px; }
 
+.admin-v2 .admin-feedback {
+  min-height: 170px;
+  padding: 28px;
+  border: 1px solid var(--app-ink);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  background: var(--app-surface);
+}
+.admin-v2 .admin-feedback > svg { color: var(--app-accent); font-size: 34px; }
+.admin-v2 .admin-feedback h2 { margin: 0; font: 500 24px var(--font-display); }
+.admin-v2 .admin-feedback p { margin: 5px 0 0; color: var(--app-muted); font-size: 13px; }
+.admin-v2 .admin-feedback button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 16px; border: 1px solid var(--app-ink); border-radius: 999px; color: var(--app-bg); background: var(--app-ink); font: 700 11px var(--font-mono); cursor: pointer; }
+.admin-v2 .admin-feedback--loading { grid-template-columns: repeat(3, 1fr); }
+.admin-v2 .admin-feedback--loading span { height: 86px; background: linear-gradient(100deg, rgba(95,43,21,.06) 20%, rgba(255,255,255,.85) 45%, rgba(95,43,21,.06) 70%); background-size: 240% 100%; animation: admin-shimmer 1.25s linear infinite; }
+
+.admin-v2 .admin-status { display: inline-flex; width: max-content; padding: 5px 11px; border-radius: 999px; font: 700 11px var(--font-mono); white-space: nowrap; }
+.admin-v2 .admin-status--warning { color: #e14d25; background: rgba(255,107,53,.12); }
+.admin-v2 .admin-status--success { color: #2e7d4f; background: rgba(46,125,79,.14); }
+.admin-v2 .admin-status--danger { color: #c2412d; background: rgba(194,65,45,.12); }
+.admin-v2 .admin-status--info { color: #4d6fb8; background: rgba(77,111,184,.12); }
+.admin-v2 .admin-status--neutral { color: var(--app-muted); background: rgba(138,107,91,.12); }
+
+.admin-dialog-backdrop { position: fixed; z-index: 100; inset: 0; padding: 24px; display: grid; place-items: center; background: rgba(45,20,9,.58); }
+.admin-dialog { width: min(640px, 100%); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid var(--app-ink); background: var(--app-bg); box-shadow: 16px 16px 0 rgba(95,43,21,.2); }
+.admin-dialog > header { min-height: 68px; padding: 16px 20px; border-bottom: 1px solid var(--app-ink); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.admin-dialog > header h2 { margin: 0; color: var(--app-ink); font: 500 27px var(--font-display); }
+.admin-dialog > header button { width: 38px; height: 38px; border: 1px solid var(--app-ink); border-radius: 999px; display: grid; place-items: center; color: var(--app-ink); background: transparent; cursor: pointer; }
+.admin-dialog__body { padding: 24px; }
+
+.admin-toast { position: fixed; z-index: 120; bottom: 28px; left: 50%; transform: translateX(-50%); padding: 14px 26px; border-radius: 999px; display: flex; align-items: center; gap: 10px; color: var(--app-bg); background: var(--app-ink); box-shadow: 0 16px 34px rgba(0,0,0,.3); font: 700 13px var(--font-mono); letter-spacing: .5px; }
+.admin-toast svg { color: var(--app-accent-light); font-size: 19px; }
+.admin-toast--error svg { color: #ffaaa0; }
+
+@keyframes admin-shimmer { to { background-position-x: -240%; } }
+
 .admin-v2 .admin-page { padding: clamp(44px, 5vw, 76px) clamp(28px, 4vw, 68px) 90px; }
 
 .admin-v2 .admin-page__heading h1 {
