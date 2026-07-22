@@ -15,3 +15,25 @@ export const canAccessRole = (
   role: UserRole,
   allowed: readonly UserRole[],
 ) => allowed.includes(role)
+
+const matchesRoute = (path: string, route: string) =>
+  path === route || path.startsWith(`${route}/`) || path.startsWith(`${route}?`)
+
+export function safeRedirectForRole(
+  role: UserRole,
+  requested?: string,
+): string {
+  if (!requested || !requested.startsWith('/') || requested.startsWith('//')) {
+    return homeForRole(role)
+  }
+
+  if (role === 'Customer') {
+    return ['/menu', '/cats', '/reservations'].some((route) =>
+      matchesRoute(requested, route),
+    )
+      ? requested
+      : '/menu'
+  }
+
+  return matchesRoute(requested, '/admin') ? requested : '/admin'
+}

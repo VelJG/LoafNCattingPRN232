@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { canAccessRole, homeForRole, normalizeRole } from './authRouting'
+import {
+  canAccessRole,
+  homeForRole,
+  normalizeRole,
+  safeRedirectForRole,
+} from './authRouting'
 
 describe('auth routing', () => {
   it.each([
@@ -26,5 +31,13 @@ describe('auth routing', () => {
     expect(canAccessRole('Customer', ['Staff', 'Admin'])).toBe(false)
     expect(canAccessRole('Staff', ['Staff', 'Admin'])).toBe(true)
     expect(canAccessRole('Admin', ['Staff', 'Admin'])).toBe(true)
+  })
+
+  it('honors only redirects that belong to the signed-in role', () => {
+    expect(safeRedirectForRole('Customer', '/reservations')).toBe('/reservations')
+    expect(safeRedirectForRole('Customer', '/admin')).toBe('/menu')
+    expect(safeRedirectForRole('Staff', '/menu')).toBe('/admin')
+    expect(safeRedirectForRole('Admin', '/admin/products')).toBe('/admin/products')
+    expect(safeRedirectForRole('Admin', 'https://malicious.example')).toBe('/admin')
   })
 })
