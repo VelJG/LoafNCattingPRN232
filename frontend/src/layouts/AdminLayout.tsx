@@ -1,24 +1,9 @@
 import { useState } from 'react'
-import {
-  MdDashboard,
-  MdEvent,
-  MdLocalCafe,
-  MdLogout,
-  MdOutlineReceiptLong,
-  MdPets,
-  MdStorefront,
-} from 'react-icons/md'
-import { Link, Outlet, useNavigate } from 'react-router-dom'
+import { MdLogout, MdNotificationsNone, MdSearch } from 'react-icons/md'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { BrandWordmark } from '../components/brand/BrandWordmark'
+import { navigationForPath, navigationForRole } from '../features/admin/adminNavigation'
 import { useAuth } from '../features/auth/useAuth'
-
-const adminItems = [
-  { icon: MdDashboard, label: 'Tổng quan', active: true },
-  { icon: MdOutlineReceiptLong, label: 'Đơn hàng' },
-  { icon: MdEvent, label: 'Đặt bàn' },
-  { icon: MdLocalCafe, label: 'Thực đơn' },
-  { icon: MdPets, label: 'Các bé mèo' },
-]
 
 function initials(name = '') {
   return name
@@ -32,14 +17,12 @@ function initials(name = '') {
 export function AdminLayout() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [loggingOut, setLoggingOut] = useState(false)
   const user = auth.session?.user
+  const currentPage = navigationForPath(pathname)
+  const items = navigationForRole(user?.role)
   const roleLabel = user?.role === 'Admin' ? 'Quản trị viên' : 'Nhân viên'
-  const today = new Intl.DateTimeFormat('vi-VN', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-  }).format(new Date())
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -51,40 +34,57 @@ export function AdminLayout() {
     <div className="admin-v2 admin-shell">
       <a className="skip-link" href="#admin-main">Đi tới nội dung</a>
       <aside className="admin-sidebar">
-        <BrandWordmark to="/admin" inverse />
-        <div className="admin-sidebar__label">Không gian quản trị</div>
+        <div className="admin-sidebar__brand">
+          <BrandWordmark to="/admin" inverse />
+          <div className="admin-sidebar__tagline">BẢNG ĐIỀU HÀNH</div>
+        </div>
+        <div className="admin-sidebar__label">VẬN HÀNH</div>
         <nav aria-label="Điều hướng quản trị">
-          {adminItems.map((item) => {
+          {items.map((item) => {
             const Icon = item.icon
             return (
-              <button
-                className={item.active ? 'admin-nav-item admin-nav-item--active' : 'admin-nav-item'}
-                key={item.label}
-                type="button"
-                disabled={!item.active}
+              <NavLink
+                className={({ isActive }) => isActive
+                  ? 'admin-nav-item admin-nav-item--active'
+                  : 'admin-nav-item'}
+                end={item.to === '/admin'}
+                key={item.key}
+                to={item.to}
               >
-                <Icon /><span>{item.label}</span>
-                {!item.active && <small>Sắp có</small>}
-              </button>
+                <Icon aria-hidden="true" />
+                <span>{item.label}</span>
+                {item.badge && <small>{item.badge}</small>}
+              </NavLink>
             )
           })}
         </nav>
         <div className="admin-sidebar__footer">
-          <Link to="/"><MdStorefront />Trang giới thiệu</Link>
           <button type="button" onClick={handleLogout} disabled={loggingOut} aria-label="Đăng xuất">
-            <MdLogout />Đăng xuất
+            <MdLogout aria-hidden="true" />
+            <span>{loggingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}</span>
           </button>
         </div>
       </aside>
+
       <div className="admin-content">
         <header className="admin-topbar">
-          <div>
-            <span className="eyebrow">{today}</span>
-            <strong>Chào ngày mới, {user?.name?.split(' ').at(-1)}</strong>
+          <div className="admin-topbar__title">
+            <strong>{currentPage.label}</strong>
+            <span>{currentPage.subtitle}</span>
           </div>
+          <div className="admin-topbar__spacer" />
+          <label className="admin-quick-search">
+            <MdSearch aria-hidden="true" />
+            <span className="sr-only">Tìm nhanh</span>
+            <input type="search" placeholder="Tìm nhanh..." />
+          </label>
+          <button className="admin-notification-button" type="button" aria-label="Thông báo">
+            <MdNotificationsNone aria-hidden="true" />
+            <span />
+          </button>
           <div className="admin-profile">
+            <div className="admin-profile__avatar">{initials(user?.name)}</div>
             <span><strong>{user?.name}</strong><small>{roleLabel}</small></span>
-            <div>{initials(user?.name)}</div>
           </div>
         </header>
         <main id="admin-main"><Outlet /></main>
