@@ -21,10 +21,16 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     private readonly string _databaseName = $"api-tests-{Guid.NewGuid():N}";
     private readonly TestTimeProvider _clock = new(
         ReservationTestData.VietnamTime(2026, 7, 22, 7, 0));
+    private readonly string _environment;
+
+    public AuthApiFactory(string environment = "Testing")
+    {
+        _environment = environment;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(_environment);
         builder.UseSetting("ConnectionStrings:DefaultConnection", "unused-by-in-memory-tests");
         builder.UseSetting("Jwt:Issuer", Issuer);
         builder.UseSetting("Jwt:Audience", Audience);

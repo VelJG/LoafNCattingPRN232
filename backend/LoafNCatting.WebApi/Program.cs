@@ -3,6 +3,7 @@ using LoafNCatting.Application.Contracts;
 using LoafNCatting.Caching.Extensions;
 using LoafNCatting.Services.Extensions;
 using LoafNCatting.WebApi.BackgroundServices;
+using LoafNCatting.WebApi.OpenApi;
 using LoafNCatting.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -81,13 +82,22 @@ if (builder.Environment.IsDevelopment())
 }
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
+});
 
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.DocumentTitle = "LoafNCatting API";
+        options.SwaggerEndpoint("/openapi/v1.json", "LoafNCatting API v1");
+    });
 }
 
 app.UseHttpsRedirection();
