@@ -257,6 +257,33 @@
 .admin-v2 .admin-stock-rows i { width: 64px; height: 6px; flex: none; overflow: hidden; border-radius: 999px; background: rgba(95,43,21,.12); }
 .admin-v2 .admin-stock-rows i span { display: block; height: 100%; border-radius: inherit; background: var(--app-accent); }
 
+.admin-v2 .admin-list-page { display: flex; flex-direction: column; gap: 16px; }
+.admin-v2 .admin-filter-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-v2 .admin-filter-row button { padding: 10px 18px; border: 1px solid var(--app-ink); border-radius: 999px; color: var(--app-ink); background: transparent; font: 400 12px var(--font-mono); letter-spacing: .5px; cursor: pointer; }
+.admin-v2 .admin-filter-row button:hover,
+.admin-v2 .admin-filter-row button.is-active { border-color: var(--app-accent); color: var(--app-bg); background: var(--app-accent); }
+.admin-v2 .admin-entity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.admin-v2 .admin-order-card,
+.admin-v2 .admin-reservation-card { min-width: 0; padding: 20px; border: 1px solid var(--app-ink); background: var(--app-surface); }
+.admin-v2 .admin-order-card > header { display: flex; align-items: baseline; gap: 10px; }
+.admin-v2 .admin-order-card > header h2 { margin: 0; flex: 1; font: 500 23px var(--font-display); }
+.admin-v2 .admin-order-card > header strong { color: var(--app-accent); font: 700 15px var(--font-mono); }
+.admin-v2 .admin-order-card > p,
+.admin-v2 .admin-reservation-card > p { margin: 6px 0 0; color: var(--app-body); font-size: 14px; }
+.admin-v2 .admin-order-card > time,
+.admin-v2 .admin-reservation-card > span { display: block; margin-top: 3px; color: var(--app-muted); font: 400 11px var(--font-mono); }
+.admin-v2 .admin-card-chips { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-v2 .admin-card-actions { margin-top: 14px; display: flex; justify-content: flex-end; }
+.admin-v2 .admin-card-actions button { min-height: 40px; padding: 0 18px; border: 1px solid var(--app-ink); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: var(--app-ink); background: transparent; font: 700 11px var(--font-mono); letter-spacing: .5px; cursor: pointer; }
+.admin-v2 .admin-card-actions button:hover { color: var(--app-bg); background: var(--app-ink); }
+.admin-v2 .admin-card-actions button:disabled { opacity: .55; cursor: wait; }
+.admin-v2 .admin-reservation-card > header { display: flex; align-items: center; gap: 10px; }
+.admin-v2 .admin-reservation-card > header > strong { flex: 1; font: 700 15px var(--font-mono); }
+.admin-v2 .admin-reservation-card > p { margin-top: 8px; }
+.admin-v2 .admin-card-actions--split { gap: 8px; }
+.admin-v2 .admin-card-actions--split .admin-cancel-action { margin-right: auto; border-color: rgba(194,65,45,.45); color: #c2412d; }
+.admin-v2 .admin-card-actions--split .admin-cancel-action:hover { border-color: #c2412d; background: #c2412d; }
+
 .admin-v2 .admin-page__heading h1 {
   max-width: 850px;
   margin: 10px 0 14px;
@@ -480,6 +507,10 @@
   .admin-v2 .admin-sidebar__footer { display: none; }
   .admin-v2 .admin-nav-item { justify-content: center; }
   .admin-v2 .admin-dashboard-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .admin-v2 .admin-entity-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {

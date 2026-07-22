@@ -10,6 +10,8 @@ import { AuthLayout } from './layouts/AuthLayout'
 import { CustomerLayout } from './layouts/CustomerLayout'
 import { PublicLayout } from './layouts/PublicLayout'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
+import { AdminReservationsPage } from './pages/admin/AdminReservationsPage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { CatsPage } from './pages/customer/CatsPage'
@@ -64,6 +66,8 @@ function App() {
       <Route element={<ProtectedRoute allowed={['Staff', 'Admin']} />}>
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboardPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="reservations" element={<AdminReservationsPage />} />
         </Route>
       </Route>
 
