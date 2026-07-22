@@ -50,3 +50,6 @@ coverage/
 # Misc generated files
 *.tmp
 *.temp
+
+# Local agent design and implementation documents
+/docs/
