@@ -360,6 +360,36 @@
 .admin-v2 .admin-table-card-v2 h2 { margin: 14px 0 0; font: 500 25px var(--font-display); }
 .admin-v2 .admin-table-card-v2 p { margin: 4px 0 0; color: var(--app-muted); font: 400 11px var(--font-mono); }
 
+.admin-v2 .admin-users-page { display: flex; flex-direction: column; gap: 16px; }
+.admin-v2 .admin-users-toolbar { min-height: 44px; display: flex; align-items: center; gap: 12px; }
+.admin-v2 .admin-users-toolbar > label { width: min(360px, 100%); padding: 10px 20px; border: 1px solid var(--app-ink); border-radius: 999px; display: flex; align-items: center; gap: 10px; background: var(--app-surface); }
+.admin-v2 .admin-users-toolbar > label svg { flex: none; color: var(--app-accent); font-size: 19px; }
+.admin-v2 .admin-users-toolbar > label input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font: 400 14px var(--font-body); }
+.admin-v2 .admin-users-toolbar > button { height: 44px; margin-left: auto; padding: 0 22px; border: 1px solid var(--app-accent); border-radius: 999px; color: var(--app-bg); background: var(--app-accent); font: 700 12px var(--font-mono); letter-spacing: 1px; cursor: pointer; }
+.admin-v2 .admin-users-table > * { min-width: 860px; }
+.admin-v2 .admin-users-table .admin-data-table__head,
+.admin-v2 .admin-users-table article { display: grid; grid-template-columns: 1.5fr 2fr 1fr 1fr 1.4fr; gap: 12px; align-items: center; }
+.admin-v2 .admin-users-table article { min-height: 64px; padding: 15px 22px; border-bottom: 1px solid var(--app-divider); }
+.admin-v2 .admin-users-table article > strong { font-size: 15px; }
+.admin-v2 .admin-users-table article > span { min-width: 0; overflow: hidden; color: var(--app-muted); font: 400 12px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.admin-v2 .admin-users-table article > b { width: max-content; padding: 4px 10px; border: 1px solid var(--app-accent); border-radius: 999px; color: var(--app-accent); font: 700 11px var(--font-mono); }
+.admin-v2 .admin-users-table article > div { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.admin-v2 .admin-users-table article > div button { border: 0; color: var(--app-accent); background: transparent; font: 400 11px var(--font-mono); letter-spacing: .5px; }
+.admin-v2 .admin-users-table article > div button:last-child { color: var(--app-muted); font-size: 19px; }
+.admin-v2 .admin-users-table article > div button:disabled { opacity: .48; cursor: not-allowed; }
+.admin-v2 .admin-users-empty { min-width: 860px; padding: 36px 22px; color: var(--app-muted); font-size: 13px; text-align: center; }
+
+.admin-v2 .admin-store-page { max-width: 680px; }
+.admin-v2 .admin-store-form { padding: 26px; border: 1px solid var(--app-ink); display: flex; flex-direction: column; gap: 16px; background: var(--app-surface); }
+.admin-v2 .admin-store-form label { display: grid; gap: 7px; }
+.admin-v2 .admin-store-form label > span { color: var(--app-muted); font: 400 11px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-store-form label > div { padding: 11px 20px; border: 1px solid rgba(95,43,21,.4); border-radius: 999px; display: flex; align-items: center; gap: 12px; }
+.admin-v2 .admin-store-form label svg { flex: none; color: var(--app-accent); font-size: 19px; }
+.admin-v2 .admin-store-form label input { min-width: 0; flex: 1; border: 0; outline: 0; color: var(--app-ink); background: transparent; font: 400 14px var(--font-body); }
+.admin-v2 .admin-store-form > button { height: 52px; margin-top: 4px; border: 1px solid var(--app-accent); border-radius: 999px; color: var(--app-bg); background: var(--app-accent); font: 700 13px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-store-form > button:disabled { opacity: .52; cursor: not-allowed; }
+.admin-v2 .admin-store-form > p { margin: -8px 0 0; color: var(--app-muted); font: 400 10px var(--font-mono); text-align: center; }
+
 .admin-v2 .admin-page__heading h1 {
   max-width: 850px;
   margin: 10px 0 14px;
@@ -623,6 +653,9 @@
   .admin-v2 .admin-stats-grid { grid-template-columns: 1fr 1fr; }
   .admin-v2 .admin-operations-grid { grid-template-columns: 1fr; }
   .admin-v2 .admin-error { grid-template-columns: 1fr; padding: 30px 24px; }
+  .admin-v2 .admin-users-toolbar { align-items: stretch; flex-direction: column; }
+  .admin-v2 .admin-users-toolbar > label { width: 100%; }
+  .admin-v2 .admin-users-toolbar > button { margin-left: 0; }
 }
 
 @media (max-width: 480px) {

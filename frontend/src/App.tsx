@@ -15,6 +15,9 @@ import { AdminCatsPage } from './pages/admin/AdminCatsPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminReservationsPage } from './pages/admin/AdminReservationsPage'
 import { AdminTablesPage } from './pages/admin/AdminTablesPage'
+import { AdminStorePage } from './pages/admin/AdminStorePage'
+import { AdminUsersPage } from './pages/admin/AdminUsersPage'
+import { AdminOnlyRoute } from './features/admin/AdminOnlyRoute'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { CatsPage } from './pages/customer/CatsPage'
@@ -74,6 +77,10 @@ function App() {
           <Route path="catalog" element={<AdminCatalogPage />} />
           <Route path="cats" element={<AdminCatsPage />} />
           <Route path="tables" element={<AdminTablesPage />} />
+          <Route element={<AdminOnlyRoute />}>
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="store" element={<AdminStorePage />} />
+          </Route>
         </Route>
       </Route>
 
