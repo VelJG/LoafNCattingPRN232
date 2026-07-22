@@ -18,10 +18,16 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     public const string SigningKey = "integration-test-signing-key-at-least-32-characters";
 
     private readonly string _databaseName = $"auth-api-{Guid.NewGuid():N}";
+    private readonly string _environment;
+
+    public AuthApiFactory(string environment = "Testing")
+    {
+        _environment = environment;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(_environment);
         builder.UseSetting("ConnectionStrings:DefaultConnection", "unused-by-in-memory-tests");
         builder.UseSetting("Jwt:Issuer", Issuer);
         builder.UseSetting("Jwt:Audience", Audience);
