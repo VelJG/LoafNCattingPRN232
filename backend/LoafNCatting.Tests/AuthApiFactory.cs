@@ -68,4 +68,16 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             PhoneNumber = "0900000000"
         });
     }
+
+    public async Task CreateStaffAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var accounts = scope.ServiceProvider.GetRequiredService<IUserAccountService>();
+        await accounts.CreateStaffAsync(new CreateStaffRequest(
+            "Staff Member",
+            "staff@example.com",
+            "Password1",
+            "0900000002",
+            null));
+    }
 }

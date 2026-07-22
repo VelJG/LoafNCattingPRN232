@@ -39,7 +39,8 @@ public sealed class AuthService : IAuthService
         CancellationToken cancellationToken = default)
     {
         var email = request.Email.Trim().ToLowerInvariant();
-        var user = await _unitOfWork.Repository<User>()
+        var users = _unitOfWork.Repository<User>();
+        var user = await users
             .Entities
             .AsNoTracking()
             .Include(item => item.Role)
@@ -57,6 +58,14 @@ public sealed class AuthService : IAuthService
         if (verification == PasswordVerificationResult.Failed)
         {
             throw InvalidCredentials();
+        }
+
+        if (verification == PasswordVerificationResult.SuccessRehashNeeded)
+        {
+            user.Password = _passwordHasher.HashPassword(user, request.Password);
+            user.UpdatedAt = DateTime.UtcNow;
+            await users.UpdateAsync(user, saveChanges: false);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         var token = _jwtTokenService.CreateToken(user, user.Role.RoleName);

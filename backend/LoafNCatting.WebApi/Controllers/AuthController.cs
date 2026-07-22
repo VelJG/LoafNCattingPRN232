@@ -25,7 +25,7 @@ public sealed class AuthController : ApiControllerBase
         CancellationToken cancellationToken)
         => HandleAsync(
             () => _authService.RegisterCustomerAsync(request, cancellationToken),
-            user => Created("/api/auth/verify", user));
+            user => StatusCode(StatusCodes.Status201Created, user));
 
     [AllowAnonymous]
     [HttpPost("login")]

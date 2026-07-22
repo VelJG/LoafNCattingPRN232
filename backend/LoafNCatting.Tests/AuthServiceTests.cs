@@ -79,6 +79,40 @@ public sealed class AuthServiceTests
     }
 
     [TestMethod]
+    public async Task LoginAsync_WhenPasswordHashNeedsRehash_PersistsUpgradedHash()
+    {
+        await using var data = new TestDataContext();
+        await data.SeedRolesAsync();
+        data.DbContext.Users.Add(new User
+        {
+            Name = "Customer",
+            Email = "customer@example.com",
+            Password = "legacy-hash",
+            PhoneNumber = "0900000001",
+            RoleId = 3,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            IsEmailVerified = false
+        });
+        await data.DbContext.SaveChangesAsync();
+        data.DbContext.ChangeTracker.Clear();
+        var hasher = new RehashingPasswordHasher();
+        var accounts = new UserAccountService(data.UnitOfWork, hasher);
+        var service = new AuthService(
+            data.UnitOfWork,
+            hasher,
+            accounts,
+            new StubJwtTokenService("signed-token", DateTime.UtcNow.AddMinutes(30)));
+
+        await service.LoginAsync(
+            new LoginRequest("customer@example.com", "Password1"));
+
+        var saved = await data.DbContext.Users.SingleAsync();
+        Assert.AreEqual("upgraded-hash", saved.Password);
+        Assert.IsNotNull(saved.UpdatedAt);
+    }
+
+    [TestMethod]
     public async Task VerifyAsync_ReloadsActiveUserThroughUnitOfWork()
     {
         await using var data = new TestDataContext();
@@ -133,5 +167,17 @@ public sealed class AuthServiceTests
     {
         public JwtTokenResult CreateToken(User user, string roleName)
             => new(accessToken, expiresAtUtc);
+    }
+
+    private sealed class RehashingPasswordHasher : IPasswordHasher<User>
+    {
+        public string HashPassword(User user, string password)
+            => "upgraded-hash";
+
+        public PasswordVerificationResult VerifyHashedPassword(
+            User user,
+            string hashedPassword,
+            string providedPassword)
+            => PasswordVerificationResult.SuccessRehashNeeded;
     }
 }

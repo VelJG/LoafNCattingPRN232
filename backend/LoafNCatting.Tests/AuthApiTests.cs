@@ -23,6 +23,7 @@ public sealed class AuthApiTests
             "/api/auth/register",
             CustomerRegistration());
         Assert.AreEqual(HttpStatusCode.Created, registerResponse.StatusCode);
+        Assert.IsNull(registerResponse.Headers.Location);
         var registered = await registerResponse.Content.ReadFromJsonAsync<UserDto>();
         Assert.IsNotNull(registered);
         Assert.AreEqual("Customer", registered.Role);
@@ -70,6 +71,48 @@ public sealed class AuthApiTests
     }
 
     [TestMethod]
+    public async Task AdminProducts_CustomerToken_ReturnsForbidden()
+    {
+        await using var factory = new AuthApiFactory();
+        await factory.SeedRolesAsync();
+        var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/api/auth/register", CustomerRegistration());
+        await AuthenticateAsync(client, "customer@example.com", "Password1");
+
+        var response = await client.GetAsync("/api/admin/products");
+
+        Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task AdminProducts_AdminToken_ReturnsOk()
+    {
+        await using var factory = new AuthApiFactory();
+        await factory.SeedRolesAsync();
+        await factory.CreateAdminAsync();
+        var client = factory.CreateClient();
+        await AuthenticateAsync(client, "admin@gmail.com", "12345");
+
+        var response = await client.GetAsync("/api/admin/products");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task AdminProducts_StaffToken_ReturnsOk()
+    {
+        await using var factory = new AuthApiFactory();
+        await factory.SeedRolesAsync();
+        await factory.CreateStaffAsync();
+        var client = factory.CreateClient();
+        await AuthenticateAsync(client, "staff@example.com", "Password1");
+
+        var response = await client.GetAsync("/api/admin/products");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
     public async Task CustomerToken_CannotCreateStaff()
     {
         await using var factory = new AuthApiFactory();
@@ -111,6 +154,7 @@ public sealed class AuthApiTests
             StaffRegistration());
 
         Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+        Assert.IsNull(response.Headers.Location);
         var staff = await response.Content.ReadFromJsonAsync<UserDto>();
         Assert.IsNotNull(staff);
         Assert.AreEqual("Staff", staff.Role);
@@ -147,6 +191,20 @@ public sealed class AuthApiTests
         "Password1",
         "0900000002",
         null);
+
+    private static async Task AuthenticateAsync(
+        HttpClient client,
+        string email,
+        string password)
+    {
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest(email, password));
+        var login = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.IsNotNull(login);
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.AccessToken);
+    }
 
     private static string CreateInvalidToken(string invalidity)
     {

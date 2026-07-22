@@ -58,12 +58,20 @@ public sealed class UserAccountService : IUserAccountService
 
         ValidateBootstrap(settings);
         var email = NormalizeEmail(settings.Email);
-        if (await _unitOfWork.Repository<User>()
+        var existingUser = await _unitOfWork.Repository<User>()
             .Entities
             .AsNoTracking()
-            .AnyAsync(user => user.Email == email, cancellationToken))
+            .Include(user => user.Role)
+            .SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
+        if (existingUser is not null)
         {
-            return false;
+            if (existingUser.IsActive && existingUser.Role.RoleName == "Admin")
+            {
+                return false;
+            }
+
+            throw new InvalidOperationException(
+                "The bootstrap email must belong to an active Admin account.");
         }
 
         await CreateAsync(

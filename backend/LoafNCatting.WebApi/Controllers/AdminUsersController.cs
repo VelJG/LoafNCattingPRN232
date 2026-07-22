@@ -23,5 +23,5 @@ public sealed class AdminUsersController : ApiControllerBase
         CancellationToken cancellationToken)
         => HandleAsync(
             () => _userAccountService.CreateStaffAsync(request, cancellationToken),
-            user => Created($"/api/admin/users/staff/{user.UserId}", user));
+            user => StatusCode(StatusCodes.Status201Created, user));
 }
