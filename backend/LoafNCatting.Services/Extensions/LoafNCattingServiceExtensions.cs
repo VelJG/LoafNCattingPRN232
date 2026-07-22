@@ -47,6 +47,7 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IReservationService, ReservationService>();
+        services.AddScoped<INotificationService, NotificationService>();
         services.AddSingleton(TimeProvider.System);
 
         return services;
