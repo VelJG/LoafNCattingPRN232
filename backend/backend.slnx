@@ -4,5 +4,6 @@
   <Project Path="LoafNCatting.Infrastructure/LoafNCatting.Infrastructure.csproj" />
   <Project Path="LoafNCatting.Entity/LoafNCatting.Entity.csproj" />
   <Project Path="LoafNCatting.Services/LoafNCatting.Services.csproj" />
+  <Project Path="LoafNCatting.Tests/LoafNCatting.Tests.csproj" />
   <Project Path="LoafNCatting.WebApi/LoafNCatting.WebApi.csproj" />
 </Solution>

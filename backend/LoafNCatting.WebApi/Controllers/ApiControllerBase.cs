@@ -5,10 +5,15 @@ namespace LoafNCatting.WebApi.Controllers;
 public abstract class ApiControllerBase : ControllerBase
 {
     protected async Task<IActionResult> HandleAsync<T>(Func<Task<T>> action)
+        => await HandleAsync(action, result => Ok(result));
+
+    protected async Task<IActionResult> HandleAsync<T>(
+        Func<Task<T>> action,
+        Func<T, IActionResult> onSuccess)
     {
         try
         {
-            return Ok(await action());
+            return onSuccess(await action());
         }
         catch (ArgumentException exception)
         {
@@ -28,7 +33,7 @@ public abstract class ApiControllerBase : ControllerBase
         }
     }
 
-    private ObjectResult Error(int statusCode, string title, string detail)
+    protected ObjectResult Error(int statusCode, string title, string detail)
         => StatusCode(statusCode, new ProblemDetails
         {
             Status = statusCode,

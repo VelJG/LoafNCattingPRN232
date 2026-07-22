@@ -1,5 +1,6 @@
 using LoafNCatting.Application.Interfaces.Common;
 using LoafNCatting.Application.Interfaces.Repositories;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using System.Data;
@@ -36,8 +37,21 @@ public class UnitOfWork : IUnitOfWork, IAsyncDisposable
         }
     }
 
-    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-        => ApplicationDbContext.DbContext.SaveChangesAsync(cancellationToken);
+    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await ApplicationDbContext.DbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is SqlException sqlException &&
+                SqlServerErrorClassifier.IsUniqueConstraintViolation(sqlException.Number))
+        {
+            throw new InvalidOperationException(
+                "A record with the same unique value already exists.",
+                exception);
+        }
+    }
 
     public async Task BeginTransactionAsync(
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,

@@ -5,6 +5,7 @@ using LoafNCatting.Entity.Models;
 using LoafNCatting.Infrastructure.Context;
 using LoafNCatting.Infrastructure.Repositories;
 using LoafNCatting.Services.Services;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,7 +36,10 @@ public static class LoafNCattingServiceExtensions
 
     public static IServiceCollection AddLoafNCattingServices(this IServiceCollection services)
     {
-
+        services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+        services.AddScoped<IUserAccountService, UserAccountService>();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAdminProductService, AdminProductService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
@@ -44,7 +48,6 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IReservationService, ReservationService>();
         services.AddSingleton(TimeProvider.System);
-
 
         return services;
     }
