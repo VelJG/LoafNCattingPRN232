@@ -10,6 +10,7 @@ import { AuthLayout } from './layouts/AuthLayout'
 import { CustomerLayout } from './layouts/CustomerLayout'
 import { PublicLayout } from './layouts/PublicLayout'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { AdminCatalogPage } from './pages/admin/AdminCatalogPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminReservationsPage } from './pages/admin/AdminReservationsPage'
 import { LoginPage } from './pages/auth/LoginPage'
@@ -68,6 +69,7 @@ function App() {
           <Route index element={<AdminDashboardPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
           <Route path="reservations" element={<AdminReservationsPage />} />
+          <Route path="catalog" element={<AdminCatalogPage />} />
         </Route>
       </Route>
 
