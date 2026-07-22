@@ -3,6 +3,7 @@ using LoafNCatting.Application.Interfaces.Repositories;
 using LoafNCatting.Application.Interfaces.Services;
 using LoafNCatting.Entity.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace LoafNCatting.Services.Services;
 
@@ -14,11 +15,28 @@ public sealed class NotificationService : INotificationService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
+    private readonly INotificationRealtimePublisher _realtimePublisher;
+    private readonly ILogger<NotificationService>? _logger;
 
     public NotificationService(IUnitOfWork unitOfWork, TimeProvider timeProvider)
+        : this(
+            unitOfWork,
+            timeProvider,
+            new NullNotificationRealtimePublisher(),
+            logger: null)
+    {
+    }
+
+    public NotificationService(
+        IUnitOfWork unitOfWork,
+        TimeProvider timeProvider,
+        INotificationRealtimePublisher realtimePublisher,
+        ILogger<NotificationService>? logger)
     {
         _unitOfWork = unitOfWork;
         _timeProvider = timeProvider;
+        _realtimePublisher = realtimePublisher;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<NotificationDto>> GetForUserAsync(
@@ -93,6 +111,11 @@ public sealed class NotificationService : INotificationService
             notification.IsRead = true;
             await repository.UpdateAsync(notification, saveChanges: false);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await PublishChangedSafelyAsync(
+                userId,
+                NotificationRealtimeChangeTypes.Read,
+                ToDto(notification),
+                cancellationToken);
         }
 
         return ToDto(notification);
@@ -126,6 +149,11 @@ public sealed class NotificationService : INotificationService
             unreadNotifications,
             saveChanges: false);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await PublishChangedSafelyAsync(
+            userId,
+            NotificationRealtimeChangeTypes.ReadAll,
+            notification: null,
+            cancellationToken);
         return new MarkNotificationsReadResultDto(unreadNotifications.Count);
     }
 
@@ -153,9 +181,11 @@ public sealed class NotificationService : INotificationService
             throw new KeyNotFoundException("Active notification recipient was not found.");
         }
 
+        var notification = CreateNotification(userId, normalized);
         await _unitOfWork.Repository<Notification>().InsertAsync(
-            CreateNotification(userId, normalized),
+            notification,
             saveChanges: false);
+        RegisterCreatedRealtime(notification);
     }
 
     public async Task<bool> QueueForUserIfMissingAsync(
@@ -197,9 +227,11 @@ public sealed class NotificationService : INotificationService
             return false;
         }
 
+        var notification = CreateNotification(userId, normalized);
         await _unitOfWork.Repository<Notification>().InsertAsync(
-            CreateNotification(userId, normalized),
+            notification,
             saveChanges: false);
+        RegisterCreatedRealtime(notification);
         return true;
     }
 
@@ -229,6 +261,10 @@ public sealed class NotificationService : INotificationService
         await _unitOfWork.Repository<Notification>().InsertRangeAsync(
             notifications,
             saveChanges: false);
+        foreach (var notification in notifications)
+        {
+            RegisterCreatedRealtime(notification);
+        }
         return notifications.Count;
     }
 
@@ -276,7 +312,59 @@ public sealed class NotificationService : INotificationService
         await _unitOfWork.Repository<Notification>().InsertRangeAsync(
             notifications,
             saveChanges: false);
+        foreach (var notification in notifications)
+        {
+            RegisterCreatedRealtime(notification);
+        }
         return notifications.Count;
+    }
+
+    private void RegisterCreatedRealtime(Notification notification)
+    {
+        if (!_unitOfWork.IsTransactionActive || !notification.UserId.HasValue)
+        {
+            return;
+        }
+
+        _unitOfWork.RegisterAfterCommit(cancellationToken =>
+            PublishChangedSafelyAsync(
+                notification.UserId.Value,
+                NotificationRealtimeChangeTypes.Created,
+                ToDto(notification),
+                cancellationToken));
+    }
+
+    private async Task PublishChangedSafelyAsync(
+        int userId,
+        string changeType,
+        NotificationDto? notification,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var unreadCount = await _unitOfWork.Repository<Notification>()
+                .Entities
+                .AsNoTracking()
+                .CountAsync(
+                    current =>
+                        current.UserId == userId &&
+                        !current.IsRead,
+                    cancellationToken);
+            await _realtimePublisher.PublishChangedAsync(
+                userId,
+                new NotificationChangedRealtimeDto(
+                    changeType,
+                    notification,
+                    unreadCount),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(
+                exception,
+                "Notification realtime update for User {UserId} could not be published.",
+                userId);
+        }
     }
 
     private Notification CreateNotification(

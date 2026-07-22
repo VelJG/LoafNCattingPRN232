@@ -7,6 +7,8 @@ public interface IUnitOfWork
 {
     IApplicationDbContext ApplicationDbContext { get; }
 
+    bool IsTransactionActive { get; }
+
     IRepository<T> Repository<T>() where T : class;
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
@@ -18,4 +20,11 @@ public interface IUnitOfWork
     Task CommitTransactionAsync(CancellationToken cancellationToken = default);
 
     Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Registers best-effort work that runs only after the current database
+    /// transaction has committed successfully. The callback must handle its own
+    /// failures and must not be used for database state required by the transaction.
+    /// </summary>
+    void RegisterAfterCommit(Func<CancellationToken, Task> callback);
 }

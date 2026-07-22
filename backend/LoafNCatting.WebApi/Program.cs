@@ -20,6 +20,9 @@ builder.Services.AddLoafNCattingServices();
 builder.Services.Replace(ServiceDescriptor.Scoped<
     IMessageRealtimePublisher,
     SignalRMessageRealtimePublisher>());
+builder.Services.Replace(ServiceDescriptor.Scoped<
+    INotificationRealtimePublisher,
+    SignalRNotificationRealtimePublisher>());
 builder.Services.AddHostedService<ReservationLifecycleBackgroundService>();
 builder.Services.AddSignalR();
 
@@ -74,8 +77,10 @@ builder.Services
             {
                 var accessToken = context.Request.Query["access_token"];
                 if (!string.IsNullOrEmpty(accessToken) &&
-                    context.HttpContext.Request.Path.StartsWithSegments(
-                        MessageHub.Route))
+                    (context.HttpContext.Request.Path.StartsWithSegments(
+                        MessageHub.Route) ||
+                     context.HttpContext.Request.Path.StartsWithSegments(
+                        NotificationHub.Route)))
                 {
                     context.Token = accessToken;
                 }
@@ -130,6 +135,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<MessageHub>(MessageHub.Route, options =>
+{
+    options.Transports =
+        HttpTransportType.WebSockets |
+        HttpTransportType.LongPolling;
+});
+app.MapHub<NotificationHub>(NotificationHub.Route, options =>
 {
     options.Transports =
         HttpTransportType.WebSockets |

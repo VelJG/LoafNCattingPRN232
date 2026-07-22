@@ -51,6 +51,7 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IMessageService, MessageService>();
         services.TryAddScoped<IMessageRealtimePublisher, NullMessageRealtimePublisher>();
+        services.TryAddScoped<INotificationRealtimePublisher, NullNotificationRealtimePublisher>();
         services.AddSingleton(TimeProvider.System);
 
         return services;
