@@ -146,6 +146,9 @@ public partial class LoafNcattingPrn232Context : DbContext
 
             entity.ToTable("Conversation");
 
+            entity.HasIndex(e => e.CustomerUserId, "UX_Conversation_CustomerUserId")
+                .IsUnique();
+
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");

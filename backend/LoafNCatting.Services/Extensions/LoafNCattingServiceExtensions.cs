@@ -5,9 +5,11 @@ using LoafNCatting.Entity.Models;
 using LoafNCatting.Infrastructure.Context;
 using LoafNCatting.Infrastructure.Repositories;
 using LoafNCatting.Services.Services;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LoafNCatting.Services.Extensions;
 
@@ -35,10 +37,24 @@ public static class LoafNCattingServiceExtensions
 
     public static IServiceCollection AddLoafNCattingServices(this IServiceCollection services)
     {
+        services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+        services.AddScoped<IUserAccountService, UserAccountService>();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAdminProductService, AdminProductService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICatService, CatService>();
+        services.AddScoped<ICartService, CartService>();
+        services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IReservationService, ReservationService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IMessageService, MessageService>();
+        services.TryAddScoped<IMessageRealtimePublisher, NullMessageRealtimePublisher>();
+        services.TryAddScoped<INotificationRealtimePublisher, NullNotificationRealtimePublisher>();
+        services.AddSingleton(TimeProvider.System);
 
         return services;
     }
 }
+

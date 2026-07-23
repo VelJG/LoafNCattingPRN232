@@ -1,0 +1,22 @@
+:root {
+  --landing-bg: #f3ecdd;
+  --landing-ink: #201812;
+  --landing-accent: #c6422a;
+  --landing-muted: #6e5f4e;
+  --app-bg: #f6eee4;
+  --app-surface: #ffffff;
+  --app-ink: #5f2b15;
+  --app-body: #6b4632;
+  --app-muted: #8a6b5b;
+  --app-accent: #ff6b35;
+  --app-accent-soft: #ff8c5a;
+  --app-accent-light: #ff8c5a;
+  --app-image-bg: #ffe3c7;
+  --app-muted-on-dark: #e9c9b4;
+  --app-faint-on-dark: #a9846c;
+  --app-border: rgba(95, 43, 21, 0.28);
+  --app-divider: rgba(95, 43, 21, 0.16);
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
+}
