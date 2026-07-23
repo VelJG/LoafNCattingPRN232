@@ -50,3 +50,4 @@ coverage/
 # Misc generated files
 *.tmp
 *.temp
+*.md
