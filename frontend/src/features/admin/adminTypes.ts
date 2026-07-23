@@ -93,6 +93,41 @@ export type AdminProductInput = Pick<
   | 'isAvailable'
 >
 
+export interface AdminCat {
+  catId: number
+  name: string
+  age: number | null
+  gender: string | null
+  breed: string | null
+  picture: string | null
+  description: string | null
+  friendlinessRating: number | null
+  cutenessRating: number | null
+  playfulnessRating: number | null
+  status: string
+  createdAt: string
+  updatedAt: string | null
+}
+
+export type AdminCatInput = Pick<
+  AdminCat,
+  | 'name'
+  | 'age'
+  | 'gender'
+  | 'breed'
+  | 'picture'
+  | 'description'
+  | 'friendlinessRating'
+  | 'cutenessRating'
+  | 'playfulnessRating'
+  | 'status'
+>
+
+export interface AdminCatOptions {
+  statuses: string[]
+  genders: string[]
+}
+
 export interface CreateStaffInput {
   name: string
   email: string
