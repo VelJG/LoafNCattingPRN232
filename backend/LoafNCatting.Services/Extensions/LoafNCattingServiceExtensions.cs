@@ -37,6 +37,15 @@ public static class LoafNCattingServiceExtensions
 
     public static IServiceCollection AddLoafNCattingServices(this IServiceCollection services)
     {
+        services.AddSingleton<IMediaStorageService>(provider =>
+        {
+            var configuration = provider.GetRequiredService<IConfiguration>();
+            var bucketName = configuration["S3:BucketName"]?.Trim();
+            var region = configuration["S3:Region"]?.Trim();
+            return string.IsNullOrWhiteSpace(bucketName) || string.IsNullOrWhiteSpace(region)
+                ? PassThroughMediaStorageService.Instance
+                : new S3MediaStorageService(configuration);
+        });
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
         services.AddScoped<IUserAccountService, UserAccountService>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();

@@ -10,10 +10,14 @@ namespace LoafNCatting.Services.Services;
 public sealed class ProductService : IProductService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMediaStorageService _mediaStorage;
 
-    public ProductService(IUnitOfWork unitOfWork)
+    public ProductService(
+        IUnitOfWork unitOfWork,
+        IMediaStorageService? mediaStorage = null)
     {
         _unitOfWork = unitOfWork;
+        _mediaStorage = mediaStorage ?? PassThroughMediaStorageService.Instance;
     }
 
     public async Task<List<ProductDto>> GetProductsAsync(int? categoryId, string? search)
@@ -41,7 +45,7 @@ public sealed class ProductService : IProductService
             .OrderBy(product => product.ProductId)
             .ToListAsync();
 
-        return items.Select(CafeDtoMapper.ToProductDto).ToList();
+        return items.Select(product => CafeDtoMapper.ToProductDto(product, _mediaStorage)).ToList();
     }
 
     public async Task<ProductDto?> GetProductAsync(int id)
@@ -52,6 +56,6 @@ public sealed class ProductService : IProductService
             .Include(item => item.Category)
             .FirstOrDefaultAsync(item => item.ProductId == id);
 
-        return product is null ? null : CafeDtoMapper.ToProductDto(product);
+        return product is null ? null : CafeDtoMapper.ToProductDto(product, _mediaStorage);
     }
 }

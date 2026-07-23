@@ -10,10 +10,14 @@ namespace LoafNCatting.Services.Services;
 public sealed class CatService : ICatService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMediaStorageService _mediaStorage;
 
-    public CatService(IUnitOfWork unitOfWork)
+    public CatService(
+        IUnitOfWork unitOfWork,
+        IMediaStorageService? mediaStorage = null)
     {
         _unitOfWork = unitOfWork;
+        _mediaStorage = mediaStorage ?? PassThroughMediaStorageService.Instance;
     }
 
     public async Task<List<CatDto>> GetCatsAsync(string? search)
@@ -38,7 +42,7 @@ public sealed class CatService : ICatService
             .OrderBy(cat => cat.CatId)
             .ToListAsync();
 
-        return items.Select(CafeDtoMapper.ToCatDto).ToList();
+        return items.Select(cat => CafeDtoMapper.ToCatDto(cat, _mediaStorage)).ToList();
     }
 
     public async Task<CatDto?> GetCatAsync(int id)
@@ -50,6 +54,6 @@ public sealed class CatService : ICatService
             .Include(item => item.Status)
             .FirstOrDefaultAsync(item => item.CatId == id);
 
-        return cat is null ? null : CafeDtoMapper.ToCatDto(cat);
+        return cat is null ? null : CafeDtoMapper.ToCatDto(cat, _mediaStorage);
     }
 }

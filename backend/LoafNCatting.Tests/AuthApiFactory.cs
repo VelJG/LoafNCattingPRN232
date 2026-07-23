@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LoafNCatting.Tests;
 
-public sealed class AuthApiFactory : WebApplicationFactory<Program>
+public class AuthApiFactory : WebApplicationFactory<Program>
 {
     public const string Issuer = "LoafNCatting.Tests";
     public const string Audience = "LoafNCatting.TestClient";

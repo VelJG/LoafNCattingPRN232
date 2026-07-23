@@ -9,10 +9,14 @@ namespace LoafNCatting.Services.Services;
 public sealed class CartService : ICartService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMediaStorageService _mediaStorage;
 
-    public CartService(IUnitOfWork unitOfWork)
+    public CartService(
+        IUnitOfWork unitOfWork,
+        IMediaStorageService? mediaStorage = null)
     {
         _unitOfWork = unitOfWork;
+        _mediaStorage = mediaStorage ?? PassThroughMediaStorageService.Instance;
     }
 
     public async Task<CartDto> GetCartAsync(
@@ -21,7 +25,7 @@ public sealed class CartService : ICartService
     {
         await EnsureUserExistsAsync(userId, cancellationToken);
         var cart = await FindCartAsync(userId, trackChanges: false, cancellationToken);
-        return cart is null ? EmptyCart(userId) : ToCartDto(cart);
+        return cart is null ? EmptyCart(userId) : ToCartDto(cart, _mediaStorage);
     }
 
     public async Task<CartDto> AddItemAsync(
@@ -66,7 +70,7 @@ public sealed class CartService : ICartService
 
         Touch(cart);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return ToCartDto(cart);
+        return ToCartDto(cart, _mediaStorage);
     }
 
     public async Task<CartDto> UpdateItemAsync(
@@ -98,7 +102,7 @@ public sealed class CartService : ICartService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            return ToCartDto(cart);
+            return ToCartDto(cart, _mediaStorage);
         }
 
         var product = await Set<Product>()
@@ -118,7 +122,7 @@ public sealed class CartService : ICartService
 
         Touch(cart);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return ToCartDto(cart);
+        return ToCartDto(cart, _mediaStorage);
     }
 
     public async Task<CartDto> RemoveItemAsync(
@@ -142,7 +146,7 @@ public sealed class CartService : ICartService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
-        return ToCartDto(cart);
+        return ToCartDto(cart, _mediaStorage);
     }
 
     public async Task<CartDto> ClearAsync(
@@ -162,7 +166,7 @@ public sealed class CartService : ICartService
         cart.CartItems.Clear();
         Touch(cart);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return ToCartDto(cart);
+        return ToCartDto(cart, _mediaStorage);
     }
 
     private DbSet<T> Set<T>() where T : class
@@ -246,7 +250,7 @@ public sealed class CartService : ICartService
     private static CartDto EmptyCart(int userId)
         => new(0, userId, Array.Empty<CartItemDto>(), 0m);
 
-    private static CartDto ToCartDto(Cart cart)
+    private static CartDto ToCartDto(Cart cart, IMediaStorageService mediaStorage)
     {
         var items = cart.CartItems
             .OrderBy(item => item.CreatedAt)
@@ -254,7 +258,7 @@ public sealed class CartService : ICartService
                 item.CartItemId,
                 item.ProductId,
                 item.Product.Name,
-                item.Product.Picture,
+                mediaStorage.ResolveDisplayUrl(item.Product.Picture),
                 item.UnitPrice,
                 item.Quantity,
                 item.UnitPrice * item.Quantity))

@@ -9,10 +9,14 @@ namespace LoafNCatting.Services.Services;
 public sealed class AdminProductService : IAdminProductService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMediaStorageService _mediaStorage;
 
-    public AdminProductService(IUnitOfWork unitOfWork)
+    public AdminProductService(
+        IUnitOfWork unitOfWork,
+        IMediaStorageService? mediaStorage = null)
     {
         _unitOfWork = unitOfWork;
+        _mediaStorage = mediaStorage ?? PassThroughMediaStorageService.Instance;
     }
 
     public async Task<IReadOnlyList<AdminProductDto>> GetAllAsync(string? search, int? categoryId, bool? isAvailable)
@@ -37,7 +41,7 @@ public sealed class AdminProductService : IAdminProductService
             query = query.Where(product => product.IsAvailable == isAvailable);
         }
 
-        return await query
+        var items = await query
             .OrderBy(product => product.Name)
             .Select(product => new AdminProductDto
             {
@@ -48,6 +52,7 @@ public sealed class AdminProductService : IAdminProductService
                 DiscountPrice = product.DiscountPrice,
                 UnitInStock = product.UnitInStock,
                 Picture = product.Picture,
+                PictureKey = product.Picture,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category.Name,
                 IsAvailable = product.IsAvailable,
@@ -55,10 +60,19 @@ public sealed class AdminProductService : IAdminProductService
                 UpdatedAt = product.UpdatedAt
             })
             .ToListAsync();
+
+        foreach (var item in items)
+        {
+            item.PictureKey = _mediaStorage.NormalizeStoredKey(item.PictureKey);
+            item.Picture = _mediaStorage.ResolveDisplayUrl(item.Picture);
+        }
+
+        return items;
     }
 
     public async Task<AdminProductDto?> GetByIdAsync(int productId)
-        => await _unitOfWork.Repository<Product>().Entities
+    {
+        var product = await _unitOfWork.Repository<Product>().Entities
             .AsNoTracking()
             .Where(product => product.ProductId == productId)
             .Select(product => new AdminProductDto
@@ -70,6 +84,7 @@ public sealed class AdminProductService : IAdminProductService
                 DiscountPrice = product.DiscountPrice,
                 UnitInStock = product.UnitInStock,
                 Picture = product.Picture,
+                PictureKey = product.Picture,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category.Name,
                 IsAvailable = product.IsAvailable,
@@ -77,6 +92,15 @@ public sealed class AdminProductService : IAdminProductService
                 UpdatedAt = product.UpdatedAt
             })
             .FirstOrDefaultAsync();
+        if (product is null)
+        {
+            return null;
+        }
+
+        product.PictureKey = _mediaStorage.NormalizeStoredKey(product.PictureKey);
+        product.Picture = _mediaStorage.ResolveDisplayUrl(product.Picture);
+        return product;
+    }
 
     public async Task<AdminProductDto> CreateAsync(AdminProductUpsertRequest request)
     {
