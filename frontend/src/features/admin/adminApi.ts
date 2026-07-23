@@ -1,5 +1,8 @@
 import { requestJson } from '../../api/httpClient'
 import type {
+  AdminCat,
+  AdminCatInput,
+  AdminCatOptions,
   AdminOrder,
   AdminProduct,
   AdminProductInput,
@@ -55,6 +58,28 @@ export const updateAdminProduct = (
 
 export const deleteAdminProduct = (token: string, id: number) =>
   requestJson<void>(`/admin/products/${id}`, { method: 'DELETE', token })
+
+export const listAdminCats = (token: string, signal?: AbortSignal) =>
+  requestJson<AdminCat[]>('/admin/cats', { token, signal })
+
+export const getAdminCatOptions = (token: string, signal?: AbortSignal) =>
+  requestJson<AdminCatOptions>('/admin/cats/options', { token, signal })
+
+export const createAdminCat = (token: string, input: AdminCatInput) =>
+  requestJson<AdminCat>('/admin/cats', { method: 'POST', token, body: input })
+
+export const updateAdminCat = (
+  token: string,
+  id: number,
+  input: AdminCatInput,
+) => requestJson<AdminCat>(`/admin/cats/${id}`, {
+  method: 'PUT',
+  token,
+  body: input,
+})
+
+export const deleteAdminCat = (token: string, id: number) =>
+  requestJson<void>(`/admin/cats/${id}`, { method: 'DELETE', token })
 
 export const createStaff = (token: string, input: CreateStaffInput) =>
   requestJson<CreatedStaff>('/admin/users/staff', { method: 'POST', token, body: input })
