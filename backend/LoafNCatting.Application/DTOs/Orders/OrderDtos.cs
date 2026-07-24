@@ -3,12 +3,20 @@ using System.ComponentModel.DataAnnotations;
 namespace LoafNCatting.Application.DTOs.Orders;
 
 public sealed record CheckoutRequest(
-    [property: Range(1, int.MaxValue)] int UserId,
-    [property: Required, StringLength(50)] string OrderType,
-    [property: Range(1, int.MaxValue)] int? TableId,
-    [property: Range(1, int.MaxValue)] int? ReservationId,
-    [property: Range(1, int.MaxValue)] int PaymentMethodId,
+    [param: Required, StringLength(50)] string OrderType,
+    [param: Range(1, int.MaxValue)] int? TableId,
+    [param: Range(1, int.MaxValue)] int? ReservationId,
+    [param: Range(1, int.MaxValue)] int PaymentMethodId,
     string? Note);
+
+public sealed record CheckoutOptionsDto(
+    IReadOnlyList<string> OrderTypes,
+    IReadOnlyList<PaymentMethodOptionDto> PaymentMethods);
+
+public sealed record PaymentMethodOptionDto(
+    int PaymentMethodId,
+    string Name,
+    string? Description);
 
 public sealed record OrderDto(
     int OrderId,
@@ -42,4 +50,4 @@ public sealed record PaymentDto(
     DateTime? PaidAt);
 
 public sealed record OrderStatusUpdateRequest(
-    [property: Range(1, int.MaxValue)] int OrderStatusId);
+    [param: Range(1, int.MaxValue)] int OrderStatusId);

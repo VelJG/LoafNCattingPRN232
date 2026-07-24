@@ -47,4 +47,7 @@ public static class NotificationTypes
     public const string ReservationLifecycleConflict = "ReservationLifecycleConflict";
     public const string NewCustomerMessage = "NewCustomerMessage";
     public const string NewStaffReply = "NewStaffReply";
+    public const string OrderCreated = "OrderCreated";
+    public const string OrderStatusChanged = "OrderStatusChanged";
+    public const string OrderCancelled = "OrderCancelled";
 }

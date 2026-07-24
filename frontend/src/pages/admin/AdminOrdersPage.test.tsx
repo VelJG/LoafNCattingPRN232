@@ -45,7 +45,7 @@ describe('AdminOrdersPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /cập nhật trạng thái đơn #1042/i }))
 
-    expect(update).toHaveBeenCalledWith('staff-token', 'Staff', 1042, 2)
+    expect(update).toHaveBeenCalledWith('staff-token', 1042, 2)
     expect(await screen.findByRole('status')).toHaveTextContent('Đã cập nhật đơn #1042')
   })
 })

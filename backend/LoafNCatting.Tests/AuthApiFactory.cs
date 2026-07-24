@@ -140,4 +140,64 @@ public class AuthApiFactory : WebApplicationFactory<Program>
             });
         await context.SaveChangesAsync();
     }
+
+    public async Task SeedOrderingDataAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<LoafNcattingPrn232Context>();
+        if (!await context.OrderStatuses.AnyAsync())
+        {
+            context.OrderStatuses.AddRange(
+                new OrderStatus { OrderStatusId = 1, OrderStatusName = "Pending" },
+                new OrderStatus { OrderStatusId = 2, OrderStatusName = "Processing" },
+                new OrderStatus { OrderStatusId = 3, OrderStatusName = "Ready" },
+                new OrderStatus { OrderStatusId = 4, OrderStatusName = "Completed" },
+                new OrderStatus { OrderStatusId = 5, OrderStatusName = "Cancelled" });
+        }
+
+        if (!await context.PaymentMethods.AnyAsync())
+        {
+            context.PaymentMethods.Add(new PaymentMethod
+            {
+                MethodId = 1,
+                MethodName = "Cash"
+            });
+        }
+
+        if (!await context.Categories.AnyAsync())
+        {
+            context.Categories.Add(new Category
+            {
+                CategoryId = 1,
+                Name = "Drinks"
+            });
+        }
+
+        if (!await context.Products.AnyAsync())
+        {
+            context.Products.AddRange(
+                new Product
+                {
+                    ProductId = 1,
+                    Name = "Cat Latte",
+                    Price = 50_000m,
+                    UnitInStock = 10,
+                    CategoryId = 1,
+                    IsAvailable = true,
+                    CreatedAt = _clock.GetUtcNow().UtcDateTime
+                },
+                new Product
+                {
+                    ProductId = 2,
+                    Name = "Butter Croissant",
+                    Price = 35_000m,
+                    UnitInStock = 5,
+                    CategoryId = 1,
+                    IsAvailable = true,
+                    CreatedAt = _clock.GetUtcNow().UtcDateTime
+                });
+        }
+
+        await context.SaveChangesAsync();
+    }
 }

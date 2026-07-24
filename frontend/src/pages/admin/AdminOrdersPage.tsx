@@ -4,7 +4,7 @@ import { listOrders, updateOrderStatus } from '../../features/admin/adminApi'
 import { AdminFeedback } from '../../features/admin/components/AdminFeedback'
 import { AdminStatusChip } from '../../features/admin/components/AdminStatusChip'
 import { AdminToast } from '../../features/admin/components/AdminToast'
-import type { AdminOrder, OperatorRole } from '../../features/admin/adminTypes'
+import type { AdminOrder } from '../../features/admin/adminTypes'
 import { useAuth } from '../../features/auth/useAuth'
 
 const filters = [
@@ -31,7 +31,6 @@ function dateTime(value: string) {
 export function AdminOrdersPage() {
   const session = useAuth().session
   const token = session?.token ?? ''
-  const role = (session?.user.role === 'Admin' ? 'Admin' : 'Staff') as OperatorRole
   const [orders, setOrders] = useState<AdminOrder[] | null>(null)
   const [filter, setFilter] = useState<(typeof filters)[number]['key']>('all')
   const [error, setError] = useState(false)
@@ -63,7 +62,7 @@ export function AdminOrdersPage() {
     if (!orderStatusId) return
     setUpdating(order.orderId)
     try {
-      const updated = await updateOrderStatus(token, role, order.orderId, orderStatusId)
+      const updated = await updateOrderStatus(token, order.orderId, orderStatusId)
       setOrders((current) => current?.map((item) => item.orderId === updated.orderId ? updated : item) ?? [])
       setToast({ message: `Đã cập nhật đơn #${order.orderId}`, tone: 'success' })
     } catch (caught) {

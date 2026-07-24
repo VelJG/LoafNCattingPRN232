@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext, type AuthContextValue } from '../../features/auth/AuthProvider'
+import type { CartGateway } from '../../features/cart/cartApi'
 import { CustomerLayout } from '../../layouts/CustomerLayout'
 import { catalogRepository } from '../../services/catalogRepository'
 import { CartProvider } from '../../state/CartContext'
@@ -37,6 +38,42 @@ const product: Product = {
   imageUrl: '/catpuccino.jpg',
 }
 
+function createCartGateway(): CartGateway {
+  const emptyCart = { cartId: 1, userId: 7, items: [], total: 0 }
+  return {
+    get: vi.fn().mockResolvedValue(emptyCart),
+    getCheckoutOptions: vi.fn().mockResolvedValue({
+      orderTypes: ['Takeaway'],
+      paymentMethods: [{ paymentMethodId: 1, name: 'Cash', description: null }],
+    }),
+    add: vi.fn().mockResolvedValue({
+      cartId: 1,
+      userId: 7,
+      total: 59000,
+      items: [{
+        cartItemId: 1,
+        productId: product.id,
+        productName: product.name,
+        picture: product.imageUrl,
+        unitPrice: product.price,
+        quantity: 1,
+        lineTotal: product.price,
+        availableStock: product.stock,
+        isAvailable: true,
+      }],
+    }),
+    update: vi.fn().mockResolvedValue(emptyCart),
+    remove: vi.fn().mockResolvedValue(emptyCart),
+    clear: vi.fn().mockResolvedValue(emptyCart),
+    checkout: vi.fn().mockResolvedValue({
+      orderId: 10,
+      totalPrice: 59000,
+      orderStatusId: 1,
+      orderStatusName: 'Pending',
+    }),
+  }
+}
+
 function renderCustomer(logout: AuthContextValue['logout'] = vi.fn()) {
   const auth: AuthContextValue = {
     status: 'authenticated',
@@ -48,7 +85,7 @@ function renderCustomer(logout: AuthContextValue['logout'] = vi.fn()) {
 
   return render(
     <AuthContext.Provider value={auth}>
-      <CartProvider>
+      <CartProvider gateway={createCartGateway()}>
         <MemoryRouter initialEntries={['/menu']}>
           <Routes>
             <Route path="/" element={<p>Landing destination</p>} />
@@ -115,7 +152,7 @@ describe('customer experience', () => {
     )
 
     await userEvent.click(screen.getByRole('button', { name: /thêm caramel catpuccino/i }))
-    expect(screen.getByRole('button', { name: /mở giỏ hàng, 1 món/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /mở giỏ hàng, 1 món/i })).toBeInTheDocument()
   })
 
   it('offers a retry when the products API fails', async () => {
