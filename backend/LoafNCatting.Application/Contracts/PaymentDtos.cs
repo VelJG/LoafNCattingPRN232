@@ -62,5 +62,7 @@ public sealed class PaymentSettings
 {
     public const string SectionName = "Payments";
 
+    public int? PendingPaymentExpirySeconds { get; init; }
+
     public int PendingPaymentExpiryMinutes { get; init; } = 15;
 }

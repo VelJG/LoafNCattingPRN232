@@ -131,7 +131,7 @@ public sealed class PaymentApiTests
             "Bill",
             "expired-pay@example.com");
         var order = await CreateOnlineOrderAsync(client);
-        factory.SetVietnamTime(7, 16);
+        factory.SetVietnamTime(7, 1);
 
         var response = await client.GetAsync(
             $"/api/payments/{order.OrderId}/status");

@@ -375,14 +375,25 @@ public sealed class PaymentService : IPaymentService
 
     private bool IsExpired(Order order)
     {
-        var minutes = _paymentSettings.PendingPaymentExpiryMinutes > 0
-            ? _paymentSettings.PendingPaymentExpiryMinutes
-            : 15;
         var startedAt = order.OrderDate != default
             ? order.OrderDate
             : order.CreatedAt;
         return UtcNow() - NormalizeUtc(startedAt) >=
-            TimeSpan.FromMinutes(minutes);
+            GetPendingPaymentExpiry();
+    }
+
+    private TimeSpan GetPendingPaymentExpiry()
+    {
+        if (_paymentSettings.PendingPaymentExpirySeconds is > 0)
+        {
+            return TimeSpan.FromSeconds(
+                _paymentSettings.PendingPaymentExpirySeconds.Value);
+        }
+
+        var minutes = _paymentSettings.PendingPaymentExpiryMinutes > 0
+            ? _paymentSettings.PendingPaymentExpiryMinutes
+            : 15;
+        return TimeSpan.FromMinutes(minutes);
     }
 
     private void RestoreStock(Order order)

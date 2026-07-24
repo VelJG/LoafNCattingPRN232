@@ -39,6 +39,7 @@ public class AuthApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:SigningKey", SigningKey);
         builder.UseSetting("Jwt:AccessTokenMinutes", "30");
         builder.UseSetting("BootstrapAdmin:Enabled", "false");
+        builder.UseSetting("Payments:PendingPaymentExpirySeconds", "30");
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
