@@ -720,3 +720,17 @@
   .admin-v2 .admin-cats-grid,
   .admin-v2 .admin-tables-grid { grid-template-columns: 1fr; }
 }
+
+.admin-v2 .admin-form__checks { align-items: center; }
+.admin-v2 .admin-tables-toolbar .admin-toolbar-count { margin-left: auto; color: var(--app-muted); font: 400 12px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-tables-toolbar > button { margin-left: 0; }
+.admin-v2 .admin-table-card-v2 header .admin-status { margin-left: auto; }
+.admin-v2 .admin-table-actions { display: flex; align-items: center; gap: 5px; }
+.admin-v2 .admin-table-actions button { padding: 0 3px; border: 0; color: var(--app-accent); background: transparent; font-size: 21px; cursor: pointer; }
+.admin-v2 .admin-table-actions button:last-child { color: #c2412d; }
+.admin-v2 .admin-table-card-v2 small { display: block; margin-top: 12px; color: var(--app-body); font-size: 13px; line-height: 1.45; }
+.admin-v2 .admin-users-table article > div button:last-child { color: #c2412d; }
+
+@media (max-width: 720px) {
+  .admin-v2 .admin-tables-toolbar .admin-toolbar-count { margin-left: 0; }
+}
