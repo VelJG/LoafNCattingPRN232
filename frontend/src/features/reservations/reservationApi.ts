@@ -56,3 +56,14 @@ export function createReservation(input: CreateReservationInput, token: string) 
     token,
   })
 }
+
+export function listMyReservations(token: string, signal?: AbortSignal) {
+  return requestJson<Reservation[]>('/reservations/mine', { token, signal })
+}
+
+export function cancelReservation(token: string, reservationId: number) {
+  return requestJson<Reservation>(`/reservations/${reservationId}/cancel`, {
+    method: 'PATCH',
+    token,
+  })
+}

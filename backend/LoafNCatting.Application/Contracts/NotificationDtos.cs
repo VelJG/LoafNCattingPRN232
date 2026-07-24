@@ -50,4 +50,6 @@ public static class NotificationTypes
     public const string OrderCreated = "OrderCreated";
     public const string OrderStatusChanged = "OrderStatusChanged";
     public const string OrderCancelled = "OrderCancelled";
+    public const string PaymentSucceeded = "PaymentSucceeded";
+    public const string PaymentCancelled = "PaymentCancelled";
 }

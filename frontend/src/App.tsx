@@ -25,6 +25,7 @@ import { CatDetailPage } from './pages/customer/CatDetailPage'
 import { ChatPage } from './pages/customer/ChatPage'
 import { LocationPage } from './pages/customer/LocationPage'
 import { MenuPage } from './pages/customer/MenuPage'
+import { CustomerOrdersPage } from './pages/customer/CustomerOrdersPage'
 import { NotificationsPage } from './pages/customer/NotificationsPage'
 import { ProfilePage } from './pages/customer/ProfilePage'
 import { ReservationPage } from './pages/customer/ReservationPage'
@@ -61,6 +62,7 @@ function App() {
           <Route path="menu" element={<MenuPage />} />
           <Route path="cats" element={<CatsPage />} />
           <Route path="cats/:catId" element={<CatDetailPage />} />
+          <Route path="orders" element={<CustomerOrdersPage />} />
           <Route path="reservations" element={<ReservationPage />} />
           <Route path="location" element={<LocationPage />} />
           <Route path="notifications" element={<NotificationsPage />} />

@@ -111,6 +111,19 @@ public sealed class OrderService : IOrderService
         try
         {
             await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+            var hasPendingOnlinePayment = await Set<Order>()
+                .AsNoTracking()
+                .AnyAsync(
+                    order =>
+                        order.CustomerUserId == customerUserId &&
+                        order.Payments.Any(payment =>
+                            payment.PaymentStatus == PendingPaymentStatus),
+                    cancellationToken);
+            if (hasPendingOnlinePayment)
+            {
+                throw new InvalidOperationException(
+                    "Complete or cancel the pending online payment before creating another order.");
+            }
             var cart = await FindCartAsync(customerUserId, cancellationToken);
             if (cart is null || cart.CartItems.Count == 0)
             {
@@ -348,6 +361,14 @@ public sealed class OrderService : IOrderService
                     targetStatus.OrderStatusName);
                 var targetState = ClassifyOrderStatus(
                     targetStatus.OrderStatusName);
+                if (targetState != OrderState.Cancelled &&
+                    order.Payments.Any(payment =>
+                        IsPendingPaymentStatus(payment.PaymentStatus)))
+                {
+                    throw new InvalidOperationException(
+                        "An order awaiting online payment cannot be processed.");
+                }
+
                 if (targetState == OrderState.Cancelled)
                 {
                     RestoreStock(order);
@@ -406,6 +427,7 @@ public sealed class OrderService : IOrderService
             .Include(order => order.OrderStatus)
             .Include(order => order.OrderDetails)
             .ThenInclude(detail => detail.Product)
+            .Include(order => order.Table)
             .Include(order => order.Payments)
             .ThenInclude(payment => payment.Method);
 
@@ -747,7 +769,10 @@ public sealed class OrderService : IOrderService
                     payment.TransactionCode,
                     payment.PaymentDate,
                     payment.PaidAt))
-                .ToList());
+                .ToList(),
+            order.TableId,
+            order.Table?.TableName,
+            order.ReservationId);
 
     private sealed record RequestedOrderItem(int ProductId, int Quantity);
 

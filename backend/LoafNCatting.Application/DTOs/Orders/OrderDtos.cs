@@ -29,7 +29,10 @@ public sealed record OrderDto(
     int OrderStatusId,
     string OrderStatusName,
     IReadOnlyList<OrderItemDto> Items,
-    IReadOnlyList<PaymentDto> Payments);
+    IReadOnlyList<PaymentDto> Payments,
+    int? TableId,
+    string? TableName,
+    int? ReservationId);
 
 public sealed record OrderItemDto(
     int OrderDetailId,

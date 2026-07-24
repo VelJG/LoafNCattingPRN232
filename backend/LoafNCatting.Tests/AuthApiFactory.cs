@@ -23,6 +23,8 @@ public class AuthApiFactory : WebApplicationFactory<Program>
         ReservationTestData.VietnamTime(2026, 7, 22, 7, 0));
     private readonly string _environment;
 
+    internal TestPaymentGateway PaymentGateway { get; } = new();
+
     public AuthApiFactory(string environment = "Testing")
     {
         _environment = environment;
@@ -50,6 +52,8 @@ public class AuthApiFactory : WebApplicationFactory<Program>
                         InMemoryEventId.TransactionIgnoredWarning)));
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(_clock);
+            services.RemoveAll<IPaymentGateway>();
+            services.AddSingleton<IPaymentGateway>(PaymentGateway);
         });
     }
 
@@ -157,11 +161,17 @@ public class AuthApiFactory : WebApplicationFactory<Program>
 
         if (!await context.PaymentMethods.AnyAsync())
         {
-            context.PaymentMethods.Add(new PaymentMethod
-            {
-                MethodId = 1,
-                MethodName = "Cash"
-            });
+            context.PaymentMethods.AddRange(
+                new PaymentMethod
+                {
+                    MethodId = 1,
+                    MethodName = "Cash"
+                },
+                new PaymentMethod
+                {
+                    MethodId = 2,
+                    MethodName = "Bank transfer"
+                });
         }
 
         if (!await context.Categories.AnyAsync())

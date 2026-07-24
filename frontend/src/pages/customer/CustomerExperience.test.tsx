@@ -121,7 +121,7 @@ describe('customer experience', () => {
       within(screen.getByRole('navigation', { name: /khách hàng/i }))
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['THỰC ĐƠN', 'ĐẶT BÀN', 'MÈO', 'VỊ TRÍ', 'THÔNG BÁO', 'TRÒ CHUYỆN'])
+    ).toEqual(['THỰC ĐƠN', 'ĐƠN HÀNG', 'ĐẶT BÀN', 'MÈO', 'VỊ TRÍ', 'THÔNG BÁO', 'TRÒ CHUYỆN'])
     expect(screen.queryByRole('button', { name: /đăng xuất/i })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('link', { name: /tài khoản minh anh/i }))

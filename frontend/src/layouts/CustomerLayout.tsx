@@ -8,6 +8,7 @@ import { useCart } from '../state/CartContext'
 
 const customerNavigation = [
   { to: '/menu', label: 'THỰC ĐƠN' },
+  { to: '/orders', label: 'ĐƠN HÀNG' },
   { to: '/reservations', label: 'ĐẶT BÀN' },
   { to: '/cats', label: 'MÈO' },
   { to: '/location', label: 'VỊ TRÍ' },

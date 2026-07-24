@@ -7,6 +7,7 @@ import {
   MdRemove,
   MdShoppingBag,
 } from 'react-icons/md'
+import { Link } from 'react-router-dom'
 import { useCart } from '../state/CartContext'
 import { formatVnd } from '../utils/format'
 
@@ -78,6 +79,9 @@ export function CartDrawer() {
             <span>
               Đã tạo đơn #{cart.completedOrder.orderId} · {formatVnd(cart.completedOrder.totalPrice)}
             </span>
+            <Link className="cart-order-link" to="/orders" onClick={cart.close}>
+              Xem đơn / thanh toán
+            </Link>
             <button type="button" onClick={cart.dismissCompletedOrder} aria-label="Đóng thông báo đơn hàng">
               <MdClose />
             </button>

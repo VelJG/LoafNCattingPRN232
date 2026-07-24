@@ -1,3 +1,4 @@
+using LoafNCatting.Application.Contracts;
 using LoafNCatting.Application.Interfaces.Common;
 using LoafNCatting.Application.Interfaces.Repositories;
 using LoafNCatting.Application.Interfaces.Services;
@@ -57,11 +58,17 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<ICatService, CatService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IPaymentGateway, PayOsPaymentGateway>();
+        services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IReservationService, ReservationService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IMessageService, MessageService>();
         services.TryAddScoped<IMessageRealtimePublisher, NullMessageRealtimePublisher>();
         services.TryAddScoped<INotificationRealtimePublisher, NullNotificationRealtimePublisher>();
+        services.AddOptions<PayOsSettings>()
+            .BindConfiguration(PayOsSettings.SectionName);
+        services.AddOptions<PaymentSettings>()
+            .BindConfiguration(PaymentSettings.SectionName);
         services.AddSingleton(TimeProvider.System);
 
         return services;
