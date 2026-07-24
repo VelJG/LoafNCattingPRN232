@@ -43,6 +43,8 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAdminProductService, AdminProductService>();
         services.AddScoped<IAdminCatService, AdminCatService>();
+        services.AddScoped<IAdminUserService, AdminUserService>();
+        services.AddScoped<IAdminTableService, AdminTableService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICatService, CatService>();

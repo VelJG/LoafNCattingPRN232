@@ -1,13 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createAdminProduct,
+  createAdminTable,
+  createAdminUser,
   createStaff,
   deleteAdminProduct,
+  deleteAdminTable,
+  deleteAdminUser,
+  getAdminTableOptions,
+  getAdminUserOptions,
   listAdminProducts,
+  listAdminTables,
+  listAdminUsers,
   listOrders,
   listStoreReservations,
   transitionReservation,
   updateAdminProduct,
+  updateAdminTable,
+  updateAdminUser,
   updateOrderStatus,
 } from './adminApi'
 
@@ -83,6 +93,68 @@ describe('adminApi', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/admin/products', expect.objectContaining({ method: 'POST' }))
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/admin/products/8', expect.objectContaining({ method: 'PUT' }))
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/products/8', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('uses admin user CRUD and options endpoints', async () => {
+    const input = {
+      name: 'Hà Linh',
+      email: 'linh@loaf.vn',
+      password: 'Password1',
+      phoneNumber: '0900000002',
+      address: null,
+      avatarUrl: null,
+      role: 'Staff',
+      isActive: true,
+      isEmailVerified: false,
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ roles: ['Admin', 'Staff'] }))
+      .mockResolvedValueOnce(jsonResponse({ userId: 11, ...input }, 201))
+      .mockResolvedValueOnce(jsonResponse({ userId: 11, ...input }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listAdminUsers('admin-token')
+    await getAdminUserOptions('admin-token')
+    await createAdminUser('admin-token', input)
+    await updateAdminUser('admin-token', 11, input)
+    await deleteAdminUser('admin-token', 11)
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/admin/users', expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/admin/users/options', expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/users', expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }))
+    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/admin/users/11', expect.objectContaining({ method: 'PUT' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/admin/users/11', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('uses admin table CRUD and options endpoints', async () => {
+    const input = {
+      tableName: 'Bàn 4',
+      capacity: 4,
+      area: 'Tầng 1',
+      description: null,
+      status: 'Trống',
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ statuses: ['Trống'] }))
+      .mockResolvedValueOnce(jsonResponse({ tableId: 4, ...input }, 201))
+      .mockResolvedValueOnce(jsonResponse({ tableId: 4, ...input }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listAdminTables('staff-token')
+    await getAdminTableOptions('staff-token')
+    await createAdminTable('staff-token', input)
+    await updateAdminTable('staff-token', 4, input)
+    await deleteAdminTable('staff-token', 4)
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/admin/tables', expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/admin/tables/options', expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/tables', expect.objectContaining({ method: 'POST', body: JSON.stringify(input) }))
+    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/admin/tables/4', expect.objectContaining({ method: 'PUT' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/admin/tables/4', expect.objectContaining({ method: 'DELETE' }))
   })
 
   it('posts the exact create-staff payload', async () => {

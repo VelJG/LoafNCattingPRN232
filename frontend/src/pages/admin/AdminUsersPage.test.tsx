@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as adminApi from '../../features/admin/adminApi'
+import type { AdminUser } from '../../features/admin/adminTypes'
 import { AuthContext, type AuthContextValue } from '../../features/auth/AuthProvider'
 import { AdminUsersPage } from './AdminUsersPage'
 
@@ -12,28 +13,82 @@ const auth: AuthContextValue = {
   login: vi.fn(), register: vi.fn(), logout: vi.fn(),
 }
 
+const staffUser: AdminUser = {
+  userId: 11,
+  name: 'Hà Linh',
+  email: 'linh@loaf.vn',
+  phoneNumber: '0900000002',
+  address: null,
+  avatarUrl: null,
+  role: 'Staff',
+  isActive: true,
+  isEmailVerified: false,
+  createdAt: '2026-07-24T00:00:00Z',
+  updatedAt: null,
+}
+
+function renderPage() {
+  return render(<AuthContext.Provider value={auth}><MemoryRouter><AdminUsersPage /></MemoryRouter></AuthContext.Provider>)
+}
+
 afterEach(() => vi.restoreAllMocks())
 
 describe('AdminUsersPage', () => {
-  it('creates Staff through the only supported user-management endpoint', async () => {
-    const create = vi.spyOn(adminApi, 'createStaff').mockResolvedValue({
-      userId: 11, name: 'Hà Linh', email: 'linh@loaf.vn', phoneNumber: '0900000002', address: null,
-      role: 'Staff', isActive: true, isEmailVerified: false,
-    })
-    render(<AuthContext.Provider value={auth}><MemoryRouter><AdminUsersPage /></MemoryRouter></AuthContext.Provider>)
+  it('loads users and creates a user through the admin CRUD API', async () => {
+    vi.spyOn(adminApi, 'listAdminUsers').mockResolvedValue([staffUser])
+    vi.spyOn(adminApi, 'getAdminUserOptions').mockResolvedValue({ roles: ['Admin', 'Staff', 'Customer'] })
+    const create = vi.spyOn(adminApi, 'createAdminUser').mockResolvedValue({ ...staffUser, userId: 12, name: 'Bảo An', email: 'bao@loaf.vn' })
 
-    expect(screen.getByPlaceholderText('Tìm theo tên/email/SĐT')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /tạo nhân viên/i }))
-    await userEvent.type(screen.getByLabelText('Họ và tên'), 'Hà Linh')
-    await userEvent.type(screen.getByLabelText('Email'), 'linh@loaf.vn')
-    await userEvent.type(screen.getByLabelText('Số điện thoại'), '0900000002')
+    renderPage()
+
+    expect(await screen.findByText('Hà Linh')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /thêm người dùng/i }))
+    await userEvent.type(screen.getByLabelText('Họ và tên'), 'Bảo An')
+    await userEvent.type(screen.getByLabelText('Email'), 'bao@loaf.vn')
+    await userEvent.type(screen.getByLabelText('Số điện thoại'), '0900000003')
+    await userEvent.selectOptions(screen.getByLabelText('Vai trò'), 'Staff')
     await userEvent.type(screen.getByLabelText('Mật khẩu'), 'Password1')
-    await userEvent.click(screen.getByRole('button', { name: /lưu nhân viên/i }))
+    await userEvent.click(screen.getByRole('button', { name: /lưu người dùng/i }))
 
     expect(create).toHaveBeenCalledWith('admin-token', {
-      name: 'Hà Linh', email: 'linh@loaf.vn', phoneNumber: '0900000002', password: 'Password1', address: null,
+      name: 'Bảo An',
+      email: 'bao@loaf.vn',
+      phoneNumber: '0900000003',
+      address: null,
+      avatarUrl: null,
+      role: 'Staff',
+      isActive: true,
+      isEmailVerified: false,
+      password: 'Password1',
     })
+    expect(await screen.findByText('Bảo An')).toBeInTheDocument()
+  })
+
+  it('updates and deletes users with confirmation', async () => {
+    vi.spyOn(adminApi, 'listAdminUsers').mockResolvedValue([staffUser])
+    vi.spyOn(adminApi, 'getAdminUserOptions').mockResolvedValue({ roles: ['Admin', 'Staff', 'Customer'] })
+    const update = vi.spyOn(adminApi, 'updateAdminUser').mockResolvedValue({ ...staffUser, name: 'Hà Linh Updated', isActive: false })
+    const remove = vi.spyOn(adminApi, 'deleteAdminUser').mockResolvedValue(undefined)
+
+    renderPage()
+
     expect(await screen.findByText('Hà Linh')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('Đã tạo nhân viên Hà Linh')
+    await userEvent.click(screen.getByRole('button', { name: /sửa hà linh/i }))
+    await userEvent.clear(screen.getByLabelText('Họ và tên'))
+    await userEvent.type(screen.getByLabelText('Họ và tên'), 'Hà Linh Updated')
+    await userEvent.click(screen.getByLabelText('Tài khoản đang hoạt động'))
+    await userEvent.click(screen.getByRole('button', { name: /lưu người dùng/i }))
+
+    expect(update).toHaveBeenCalledWith('admin-token', 11, expect.objectContaining({
+      name: 'Hà Linh Updated',
+      isActive: false,
+      password: null,
+    }))
+    expect(await screen.findByText('Hà Linh Updated')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /xóa hà linh updated/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^xóa người dùng$/i }))
+
+    expect(remove).toHaveBeenCalledWith('admin-token', 11)
   })
 })
