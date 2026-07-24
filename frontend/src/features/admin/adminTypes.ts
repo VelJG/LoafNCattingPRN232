@@ -1,5 +1,3 @@
-import type { User } from '../auth/authModels'
-
 export type OperatorRole = 'Admin' | 'Staff'
 export type ReservationTransition = 'confirm' | 'cancel' | 'check-in' | 'complete'
 
@@ -128,6 +126,54 @@ export interface AdminCatOptions {
   genders: string[]
 }
 
+export interface AdminUser {
+  userId: number
+  name: string
+  email: string
+  phoneNumber: string
+  address: string | null
+  avatarUrl: string | null
+  role: string
+  isActive: boolean
+  isEmailVerified: boolean
+  createdAt: string
+  updatedAt: string | null
+}
+
+export interface AdminUserInput {
+  name: string
+  email: string
+  phoneNumber: string
+  address: string | null
+  avatarUrl: string | null
+  role: string
+  isActive: boolean
+  isEmailVerified: boolean
+  password: string | null
+}
+
+export interface AdminUserOptions {
+  roles: string[]
+}
+
+export interface AdminTable {
+  tableId: number
+  tableName: string
+  capacity: number
+  area: string | null
+  description: string | null
+  status: string
+}
+
+export type AdminTableInput = Pick<
+  AdminTable,
+  'tableName' | 'capacity' | 'area' | 'description' | 'status'
+>
+
+export interface AdminTableOptions {
+  statuses: string[]
+}
+
 export interface CreateStaffInput {
   name: string
   email: string
@@ -136,4 +182,4 @@ export interface CreateStaffInput {
   address: string | null
 }
 
-export type CreatedStaff = User
+export type CreatedStaff = AdminUser
