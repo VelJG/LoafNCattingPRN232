@@ -6,21 +6,12 @@ export interface ReservationAvailabilityInput {
   numberOfGuests: number
 }
 
-export interface SuggestedTable {
-  tableId: number
-  tableName: string
-  capacity: number
-  area: string | null
-  description: string | null
-}
-
 export interface ReservationAvailability {
   isAvailable: boolean
   reason: string | null
   durationMinutes: number
   startAt: string
   endAt: string
-  suggestedTable: SuggestedTable | null
 }
 
 export interface CreateReservationInput extends ReservationAvailabilityInput {
@@ -36,7 +27,6 @@ export interface Reservation extends CreateReservationInput {
   durationMinutes: number
   startAt: string
   endAt: string
-  table: SuggestedTable
   createdAtUtc: string
 }
 
@@ -53,17 +43,6 @@ export function createReservation(input: CreateReservationInput, token: string) 
   return requestJson<Reservation>('/reservations', {
     method: 'POST',
     body: input,
-    token,
-  })
-}
-
-export function listMyReservations(token: string, signal?: AbortSignal) {
-  return requestJson<Reservation[]>('/reservations/mine', { token, signal })
-}
-
-export function cancelReservation(token: string, reservationId: number) {
-  return requestJson<Reservation>(`/reservations/${reservationId}/cancel`, {
-    method: 'PATCH',
     token,
   })
 }

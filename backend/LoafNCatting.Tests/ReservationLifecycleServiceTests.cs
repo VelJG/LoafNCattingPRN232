@@ -115,7 +115,7 @@ public sealed class ReservationLifecycleServiceTests
         await using var data = await CreateScenarioAsync(
             ReservationTestData.CheckedInStatusId,
             ReservationTestData.OccupiedTableStatusId);
-        var service = CreateService(data, hour: 10, minute: 20);
+        var service = CreateService(data, hour: 10, minute: 50);
 
         var result = await service.ProcessDueReservationsAsync();
         await service.ProcessDueReservationsAsync();

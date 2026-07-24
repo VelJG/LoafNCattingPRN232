@@ -241,6 +241,43 @@
 .admin-v2 .admin-dashboard-panel > header a { color: var(--app-accent); font: 400 11px var(--font-mono); letter-spacing: 1px; }
 .admin-v2 .admin-dashboard-panel .admin-feedback { min-height: 190px; border: 0; }
 
+.admin-v2 .admin-chat-page { width: 100%; margin: 0; padding: 0; }
+.admin-v2 .admin-chat-shell { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: 22px; align-items: stretch; }
+.admin-v2 .admin-chat-sidebar,
+.admin-v2 .admin-chat-thread { min-height: calc(100vh - 188px); display: flex; flex-direction: column; }
+.admin-v2 .admin-chat-status { padding: 7px 12px; border-radius: 999px; font: 700 11px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-chat-status--connected { color: var(--app-bg); background: var(--app-accent); }
+.admin-v2 .admin-chat-status--connecting { color: var(--app-ink); background: rgba(95,43,21,.12); }
+.admin-v2 .admin-chat-status--disconnected { color: #9d4032; background: rgba(157,64,50,.12); }
+.admin-v2 .admin-chat-conversations { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+.admin-v2 .admin-chat-conversation { width: 100%; padding: 18px 22px; border: 0; border-bottom: 1px solid rgba(95,43,21,.12); display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 14px; align-items: start; text-align: left; color: var(--app-ink); background: transparent; cursor: pointer; }
+.admin-v2 .admin-chat-conversation:hover { background: rgba(95,43,21,.04); }
+.admin-v2 .admin-chat-conversation--active { background: rgba(193,122,74,.1); }
+.admin-v2 .admin-chat-conversation__avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: var(--app-bg); background: var(--app-accent); font: 700 14px var(--font-mono); }
+.admin-v2 .admin-chat-conversation__copy { min-width: 0; display: grid; gap: 4px; }
+.admin-v2 .admin-chat-conversation__copy strong { font-size: 15px; }
+.admin-v2 .admin-chat-conversation__copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-muted); font-size: 13px; }
+.admin-v2 .admin-chat-conversation__meta { display: grid; justify-items: end; gap: 8px; color: var(--app-muted); font: 400 11px var(--font-mono); letter-spacing: .4px; }
+.admin-v2 .admin-chat-conversation__meta b { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; color: var(--app-bg); background: var(--app-accent); font: 700 11px var(--font-mono); }
+.admin-v2 .admin-chat-thread > header span { color: var(--app-muted); font: 400 11px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-chat-messages { min-height: 0; flex: 1; overflow: auto; padding: 22px; display: flex; flex-direction: column; gap: 12px; background: linear-gradient(180deg, rgba(248,241,232,.9), rgba(255,255,255,.75)); }
+.admin-v2 .admin-chat-line { display: flex; }
+.admin-v2 .admin-chat-line--customer { justify-content: flex-start; }
+.admin-v2 .admin-chat-line--admin { justify-content: flex-end; }
+.admin-v2 .admin-chat-bubble { max-width: min(78%, 560px); padding: 12px 16px; border-radius: 20px; border: 1px solid rgba(95,43,21,.16); background: var(--app-bg); }
+.admin-v2 .admin-chat-line--admin .admin-chat-bubble { color: var(--app-bg); background: var(--app-accent); border-color: transparent; }
+.admin-v2 .admin-chat-bubble small { display: block; margin-bottom: 6px; opacity: .75; font: 400 11px var(--font-mono); letter-spacing: .4px; }
+.admin-v2 .admin-chat-bubble p { margin: 0; white-space: pre-wrap; line-height: 1.45; }
+.admin-v2 .admin-chat-empty-thread { min-height: 100%; display: grid; place-items: center; gap: 14px; text-align: center; color: var(--app-muted); }
+.admin-v2 .admin-chat-empty-thread svg { font-size: 34px; color: var(--app-accent); }
+.admin-v2 .admin-chat-empty-thread h3,
+.admin-v2 .admin-chat-empty-thread p { margin: 0; }
+.admin-v2 .admin-chat-composer { padding: 16px 22px 22px; border-top: 1px solid rgba(95,43,21,.12); display: flex; align-items: center; gap: 12px; background: var(--app-surface); }
+.admin-v2 .admin-chat-composer input { width: 100%; min-width: 0; height: 48px; padding: 0 18px; border: 1px solid rgba(95,43,21,.28); border-radius: 999px; color: var(--app-ink); background: var(--app-bg); font: 400 15px var(--font-body); }
+.admin-v2 .admin-chat-composer button { width: 48px; height: 48px; flex: none; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--app-bg); background: var(--app-accent); font-size: 20px; cursor: pointer; }
+.admin-v2 .admin-chat-composer button:disabled { opacity: .55; cursor: wait; }
+.admin-v2 .admin-chat-error { margin: 0 22px 18px; color: #9d4032; font-size: 14px; }
+
 .admin-v2 .admin-orders-table__head,
 .admin-v2 .admin-orders-table article { display: grid; grid-template-columns: 1fr 1.3fr .8fr 1fr 1.1fr; gap: 12px; align-items: center; }
 .admin-v2 .admin-orders-table__head { padding: 10px 22px; border-bottom: 1px solid var(--app-ink); color: var(--app-muted); font: 400 10px var(--font-mono); letter-spacing: 1px; }
@@ -292,6 +329,11 @@
 .admin-v2 .admin-reservation-card > header { display: flex; align-items: center; gap: 10px; }
 .admin-v2 .admin-reservation-card > header > strong { flex: 1; font: 700 15px var(--font-mono); }
 .admin-v2 .admin-reservation-card > p { margin-top: 8px; }
+.admin-v2 .admin-reservation-transition { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(95,43,21,.2); }
+.admin-v2 .admin-reservation-transition label { display: grid; gap: 7px; }
+.admin-v2 .admin-reservation-transition label > span { color: var(--app-muted); font: 700 10px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-reservation-transition select { width: 100%; min-height: 42px; padding: 0 38px 0 14px; border: 1px solid var(--app-ink); border-radius: 8px; color: var(--app-ink); background: var(--app-surface); font: 500 13px var(--font-mono); cursor: pointer; }
+.admin-v2 .admin-reservation-transition select:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
 .admin-v2 .admin-card-actions--split { gap: 8px; }
 .admin-v2 .admin-card-actions--split .admin-cancel-action { margin-right: auto; border-color: rgba(194,65,45,.45); color: #c2412d; }
 .admin-v2 .admin-card-actions--split .admin-cancel-action:hover { border-color: #c2412d; background: #c2412d; }
@@ -625,6 +667,9 @@
   .admin-v2 .admin-sidebar__footer { display: none; }
   .admin-v2 .admin-nav-item { justify-content: center; }
   .admin-v2 .admin-dashboard-grid { grid-template-columns: 1fr; }
+  .admin-v2 .admin-chat-shell { grid-template-columns: 1fr; }
+  .admin-v2 .admin-chat-sidebar,
+  .admin-v2 .admin-chat-thread { min-height: 0; }
   .admin-v2 .admin-cats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-v2 .admin-tables-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -668,6 +713,9 @@
   .admin-v2 .admin-users-toolbar { align-items: stretch; flex-direction: column; }
   .admin-v2 .admin-users-toolbar > label { width: 100%; }
   .admin-v2 .admin-users-toolbar > button { margin-left: 0; }
+  .admin-v2 .admin-chat-conversation { padding-inline: 16px; }
+  .admin-v2 .admin-chat-messages { padding: 16px; }
+  .admin-v2 .admin-chat-composer { padding: 14px 16px 16px; }
 }
 
 @media (max-width: 480px) {
@@ -676,4 +724,18 @@
   .admin-v2 .admin-profile span { display: none; }
   .admin-v2 .admin-cats-grid,
   .admin-v2 .admin-tables-grid { grid-template-columns: 1fr; }
+}
+
+.admin-v2 .admin-form__checks { align-items: center; }
+.admin-v2 .admin-tables-toolbar .admin-toolbar-count { margin-left: auto; color: var(--app-muted); font: 400 12px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-tables-toolbar > button { margin-left: 0; }
+.admin-v2 .admin-table-card-v2 header .admin-status { margin-left: auto; }
+.admin-v2 .admin-table-actions { display: flex; align-items: center; gap: 5px; }
+.admin-v2 .admin-table-actions button { padding: 0 3px; border: 0; color: var(--app-accent); background: transparent; font-size: 21px; cursor: pointer; }
+.admin-v2 .admin-table-actions button:last-child { color: #c2412d; }
+.admin-v2 .admin-table-card-v2 small { display: block; margin-top: 12px; color: var(--app-body); font-size: 13px; line-height: 1.45; }
+.admin-v2 .admin-users-table article > div button:last-child { color: #c2412d; }
+
+@media (max-width: 720px) {
+  .admin-v2 .admin-tables-toolbar .admin-toolbar-count { margin-left: 0; }
 }

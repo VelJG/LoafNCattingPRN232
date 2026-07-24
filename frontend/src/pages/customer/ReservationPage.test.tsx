@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext, type AuthContextValue } from '../../features/auth/AuthProvider'
 import * as reservationApi from '../../features/reservations/reservationApi'
 import { ReservationPage } from './ReservationPage'
@@ -38,64 +38,43 @@ function renderPage() {
 const availability = {
   isAvailable: true,
   reason: null,
-  durationMinutes: 90,
+  durationMinutes: 120,
   startAt: '2026-07-24T18:00:00+07:00',
-  endAt: '2026-07-24T19:30:00+07:00',
-  suggestedTable: {
-    tableId: 4,
-    tableName: 'Bàn Cửa Sổ 04',
-    capacity: 4,
-    area: 'Cửa sổ',
-    description: null,
-  },
+  endAt: '2026-07-24T20:00:00+07:00',
 }
-
-const reservation: reservationApi.Reservation = {
-  reservationId: 18,
-  customerUserId: 7,
-  date: '2026-07-24',
-  time: '18:00',
-  numberOfGuests: 4,
-  guestName: 'Minh Anh',
-  guestPhoneNumber: '0900000001',
-  note: null,
-  status: 'Pending',
-  durationMinutes: 90,
-  startAt: availability.startAt,
-  endAt: availability.endAt,
-  table: availability.suggestedTable,
-  createdAtUtc: '2026-07-22T14:00:00Z',
-}
-
-beforeEach(() => {
-  vi.spyOn(reservationApi, 'listMyReservations').mockResolvedValue([])
-})
 
 afterEach(() => vi.restoreAllMocks())
 
 describe('reservation page', () => {
-  it('shows 30-minute slots and creates a reservation with the authenticated guest', async () => {
+  it('checks availability and creates a reservation with the authenticated guest', async () => {
     const getAvailability = vi.spyOn(reservationApi, 'getReservationAvailability')
       .mockResolvedValue(availability)
     const createReservation = vi.spyOn(reservationApi, 'createReservation')
-      .mockResolvedValue(reservation)
+      .mockResolvedValue({
+        reservationId: 18,
+        customerUserId: 7,
+        date: '2026-07-24',
+        time: '18:00',
+        numberOfGuests: 4,
+        guestName: 'Minh Anh',
+        guestPhoneNumber: '0900000001',
+        note: null,
+        status: 'Pending',
+        durationMinutes: 120,
+        startAt: availability.startAt,
+        endAt: availability.endAt,
+        createdAtUtc: '2026-07-22T14:00:00Z',
+      })
     renderPage()
 
-    expect(screen.getByRole('button', { name: '08:30' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '20:30' })).toBeInTheDocument()
     await userEvent.clear(screen.getByLabelText('Ngày đặt bàn'))
     await userEvent.type(screen.getByLabelText('Ngày đặt bàn'), '2026-07-24')
-    await userEvent.click(screen.getByRole('button', { name: '18:00' }))
-    await userEvent.click(screen.getByRole('button', { name: /bàn 4.*4 khách/i }))
-    await screen.findByText('Bàn Cửa Sổ 04')
-    const submit = screen.getByRole('button', { name: /xác nhận đặt bàn/i })
-    await waitFor(() => expect(submit).toBeEnabled())
-    await userEvent.click(submit)
+    await userEvent.selectOptions(screen.getByLabelText('Giờ đặt bàn'), '18:00')
+    await userEvent.selectOptions(screen.getByLabelText('Số khách'), '4')
+    await userEvent.click(screen.getByRole('button', { name: /xác nhận đặt bàn/i }))
 
-    expect(getAvailability).toHaveBeenLastCalledWith({
-      date: '2026-07-24',
-      time: '18:00',
-      numberOfGuests: 4,
+    expect(getAvailability).toHaveBeenCalledWith({
+      date: '2026-07-24', time: '18:00', numberOfGuests: 4,
     })
     expect(createReservation).toHaveBeenCalledWith({
       date: '2026-07-24',
@@ -105,49 +84,26 @@ describe('reservation page', () => {
       guestPhoneNumber: '0900000001',
       note: null,
     }, 'customer-token')
-    expect(await screen.findByText('Đã giữ Bàn Cửa Sổ 04 cho bạn.')).toBeInTheDocument()
+    expect(await screen.findByText(
+      'Yêu cầu đặt chỗ đã được gửi. Vui lòng chờ quán xác nhận.',
+    )).toBeInTheDocument()
   })
 
-  it('shows an unavailable slot reason and prevents submission', async () => {
+  it('shows the backend availability reason without clearing the form', async () => {
     vi.spyOn(reservationApi, 'getReservationAvailability').mockResolvedValue({
       ...availability,
       isAvailable: false,
       reason: 'Khung giờ này đã kín chỗ.',
-      suggestedTable: null,
     })
     const createReservation = vi.spyOn(reservationApi, 'createReservation')
     renderPage()
 
-    expect(await screen.findByText('Khung giờ này đã kín chỗ.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /xác nhận đặt bàn/i })).toBeDisabled()
+    await userEvent.clear(screen.getByLabelText('Ngày đặt bàn'))
+    await userEvent.type(screen.getByLabelText('Ngày đặt bàn'), '2026-07-24')
+    await userEvent.click(screen.getByRole('button', { name: /xác nhận đặt bàn/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Khung giờ này đã kín chỗ.')
+    expect(screen.getByLabelText('Ngày đặt bàn')).toHaveValue('2026-07-24')
     expect(createReservation).not.toHaveBeenCalled()
-  })
-
-  it('lists the customers table and confirms cancellation inline', async () => {
-    const futureReservation: reservationApi.Reservation = {
-      ...reservation,
-      date: '2030-01-02',
-      startAt: '2030-01-02T18:00:00+07:00',
-      endAt: '2030-01-02T19:30:00+07:00',
-      status: 'Đã xác nhận',
-    }
-    vi.mocked(reservationApi.listMyReservations)
-      .mockResolvedValue([futureReservation])
-    vi.spyOn(reservationApi, 'getReservationAvailability')
-      .mockResolvedValue(availability)
-    const cancel = vi.spyOn(reservationApi, 'cancelReservation')
-      .mockResolvedValue({ ...futureReservation, status: 'Đã hủy' })
-    renderPage()
-
-    expect(await screen.findByRole('heading', { name: 'Bàn Cửa Sổ 04' }))
-      .toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Hủy bàn' }))
-    expect(screen.getByText('Hủy lịch này? Thao tác không thể hoàn tác.'))
-      .toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Xác nhận hủy' }))
-
-    expect(cancel).toHaveBeenCalledWith('customer-token', 18)
-    expect(await screen.findByText('Đã hủy lịch đặt bàn #18.')).toBeInTheDocument()
-    expect(screen.getByText('Đã hủy')).toBeInTheDocument()
   })
 })

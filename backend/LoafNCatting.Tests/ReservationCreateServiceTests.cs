@@ -40,7 +40,7 @@ public sealed class ReservationCreateServiceTests
         Assert.AreEqual(ReservationTestData.PendingStatusId, reservation.StatusId);
         Assert.AreEqual("Đang chờ", result.Status);
         Assert.AreEqual(1, reservation.TableId);
-        Assert.AreEqual(1, result.Table.TableId);
+        Assert.AreEqual(120, result.DurationMinutes);
         Assert.AreEqual(ReservationTestData.AvailableTableStatusId, table.TableStatusId);
         Assert.AreEqual("Bill", reservation.GuestName);
         Assert.AreEqual("0987654321", reservation.GuestPhoneNumber);
@@ -79,11 +79,15 @@ public sealed class ReservationCreateServiceTests
         await data.DbContext.SaveChangesAsync();
         var service = CreateService(data);
 
-        var first = await service.CreateAsync(10, Request(8, 30, guests: 2));
-        var second = await service.CreateAsync(11, Request(8, 30, guests: 2));
+        await service.CreateAsync(10, Request(8, 30, guests: 2));
+        await service.CreateAsync(11, Request(8, 30, guests: 2));
 
-        Assert.AreEqual(1, first.Table.TableId);
-        Assert.AreEqual(2, second.Table.TableId);
+        CollectionAssert.AreEqual(
+            new[] { 1, 2 },
+            await data.DbContext.Reservations
+                .OrderBy(reservation => reservation.ReservationId)
+                .Select(reservation => reservation.TableId)
+                .ToArrayAsync());
         Assert.AreEqual(2, await data.DbContext.Reservations.CountAsync());
     }
 

@@ -1,14 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createReservation, getReservationAvailability } from './reservationApi'
 
-const suggestedTable = {
-  tableId: 4,
-  tableName: 'Bàn 4',
-  capacity: 4,
-  area: 'Cửa sổ',
-  description: 'Gần khu mèo',
-}
-
 describe('reservationApi', () => {
   afterEach(() => vi.unstubAllGlobals())
 
@@ -19,7 +11,6 @@ describe('reservationApi', () => {
       durationMinutes: 120,
       startAt: '2026-07-24T18:00:00+07:00',
       endAt: '2026-07-24T20:00:00+07:00',
-      suggestedTable,
     }
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(response), { status: 200 }),
@@ -36,7 +27,7 @@ describe('reservationApi', () => {
       '/api/reservations/availability?date=2026-07-24&time=18%3A00&numberOfGuests=4',
       expect.objectContaining({ method: 'GET' }),
     )
-    expect(result.suggestedTable).toEqual(suggestedTable)
+    expect(result.isAvailable).toBe(true)
   })
 
   it('creates a reservation with the bearer token and exact payload', async () => {
@@ -56,7 +47,6 @@ describe('reservationApi', () => {
       durationMinutes: 120,
       startAt: '2026-07-24T18:00:00+07:00',
       endAt: '2026-07-24T20:00:00+07:00',
-      table: suggestedTable,
       createdAtUtc: '2026-07-22T14:00:00Z',
     }
     const fetchMock = vi.fn().mockResolvedValue(
@@ -75,6 +65,6 @@ describe('reservationApi', () => {
       }),
     )
     expect(result.reservationId).toBe(18)
-    expect(result.table.tableId).toBe(4)
+    expect(result).not.toHaveProperty('table')
   })
 })

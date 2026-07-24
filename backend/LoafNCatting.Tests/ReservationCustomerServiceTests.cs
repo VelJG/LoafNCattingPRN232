@@ -39,8 +39,10 @@ public sealed class ReservationCustomerServiceTests
 
         Assert.AreEqual(1, result.ReservationId);
         Assert.AreEqual(10, result.CustomerUserId);
-        Assert.AreEqual("T1", result.Table.TableName);
-        Assert.AreEqual(90, result.DurationMinutes);
+        Assert.AreEqual(120, result.DurationMinutes);
+        Assert.AreEqual(
+            new DateTimeOffset(2026, 7, 22, 11, 0, 0, TimeSpan.FromHours(7)),
+            result.EndAt);
     }
 
     [TestMethod]

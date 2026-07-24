@@ -191,6 +191,44 @@ public sealed class ReservationStaffServiceTests
     }
 
     [TestMethod]
+    public async Task CheckInByStoreAsync_ReassignsToSmallestAvailableTableWhenPlannedTableIsOccupied()
+    {
+        await using var data = await CreateDataAsync(
+            tableStatusId: ReservationTestData.OccupiedTableStatusId);
+        ReservationTestData.AddTable(
+            data,
+            tableId: 2,
+            capacity: 2,
+            tableStatusId: ReservationTestData.AvailableTableStatusId);
+        ReservationTestData.AddTable(
+            data,
+            tableId: 3,
+            capacity: 4,
+            tableStatusId: ReservationTestData.AvailableTableStatusId);
+        AddReservation(data, 1, ReservationTestData.ConfirmedStatusId, customerUserId: 10);
+        await data.DbContext.SaveChangesAsync();
+
+        var result = await CreateService(data, hour: 9).CheckInByStoreAsync(20, 1);
+
+        var stored = await data.DbContext.Reservations.AsNoTracking().SingleAsync();
+        var tables = await data.DbContext.RestaurantTables
+            .AsNoTracking()
+            .OrderBy(table => table.TableId)
+            .ToListAsync();
+        Assert.AreEqual(2, stored.TableId);
+        Assert.AreEqual(2, result.Table.TableId);
+        Assert.AreEqual(
+            ReservationTestData.OccupiedTableStatusId,
+            tables.Single(table => table.TableId == 1).TableStatusId);
+        Assert.AreEqual(
+            ReservationTestData.OccupiedTableStatusId,
+            tables.Single(table => table.TableId == 2).TableStatusId);
+        Assert.AreEqual(
+            ReservationTestData.AvailableTableStatusId,
+            tables.Single(table => table.TableId == 3).TableStatusId);
+    }
+
+    [TestMethod]
     public async Task CompleteByStoreAsync_CompletesAndReleasesOccupiedTable()
     {
         await using var data = await CreateDataAsync(

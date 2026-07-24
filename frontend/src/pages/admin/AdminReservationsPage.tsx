@@ -15,11 +15,28 @@ const filters = [
   { key: 'completed', label: 'Hoàn thành', matches: (status: string) => /(completed|hoàn)/i.test(status) },
 ] as const
 
-function nextTransition(status: string): ReservationTransition | null {
-  if (/(pending|chờ)/i.test(status)) return 'confirm'
-  if (/(confirmed|xác nhận)/i.test(status)) return 'check-in'
-  if (/(checked|đã đến)/i.test(status)) return 'complete'
-  return null
+interface TransitionOption {
+  value: ReservationTransition
+  label: string
+}
+
+function allowedTransitions(status: string): TransitionOption[] {
+  if (/(pending|chờ)/i.test(status)) {
+    return [
+      { value: 'confirm', label: 'Đã xác nhận' },
+      { value: 'cancel', label: 'Đã hủy' },
+    ]
+  }
+  if (/(confirmed|xác nhận)/i.test(status)) {
+    return [
+      { value: 'check-in', label: 'Đã đến (check-in)' },
+      { value: 'cancel', label: 'Đã hủy' },
+    ]
+  }
+  if (/(checked|đã đến)/i.test(status)) {
+    return [{ value: 'complete', label: 'Hoàn thành' }]
+  }
+  return []
 }
 
 export function AdminReservationsPage() {
@@ -28,6 +45,7 @@ export function AdminReservationsPage() {
   const [filter, setFilter] = useState<(typeof filters)[number]['key']>('all')
   const [error, setError] = useState(false)
   const [updating, setUpdating] = useState<number | null>(null)
+  const [editing, setEditing] = useState<{ reservationId: number; action: ReservationTransition | '' } | null>(null)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const reload = useCallback(() => setReloadKey((value) => value + 1), [])
@@ -55,6 +73,7 @@ export function AdminReservationsPage() {
     try {
       const updated = await transitionReservation(token, reservation.reservationId, action)
       setItems((current) => current?.map((item) => item.reservationId === updated.reservationId ? updated : item) ?? [])
+      setEditing(null)
       setToast({ message: `Đã cập nhật đặt bàn #${reservation.reservationId}`, tone: 'success' })
     } catch (caught) {
       setToast({ message: caught instanceof ApiError ? caught.detail : 'Không thể cập nhật đặt bàn.', tone: 'error' })
@@ -74,19 +93,65 @@ export function AdminReservationsPage() {
             : (
               <div className="admin-entity-grid">
                 {visible.map((reservation) => {
-                  const action = nextTransition(reservation.status)
+                  const transitionOptions = allowedTransitions(reservation.status)
+                  const isEditing = editing?.reservationId === reservation.reservationId
                   return (
                     <article className="admin-reservation-card" key={reservation.reservationId}>
                       <header><strong>{reservation.date.split('-').reverse().join('/')} · {reservation.time.slice(0, 5)}</strong><AdminStatusChip value={reservation.status} /></header>
                       <p>{reservation.guestName}</p>
                       <span>{reservation.numberOfGuests} KHÁCH · {reservation.table.tableName.toLocaleUpperCase('vi-VN')} · {(reservation.table.area || 'KHU VỰC CHUNG').toLocaleUpperCase('vi-VN')}</span>
-                      {action && (
-                        <div className="admin-card-actions admin-card-actions--split">
-                          <button className="admin-cancel-action" type="button" disabled={updating === reservation.reservationId} onClick={() => transition(reservation, 'cancel')}>HỦY</button>
-                          <button type="button" disabled={updating === reservation.reservationId} onClick={() => transition(reservation, action)} aria-label={`Cập nhật trạng thái đặt bàn #${reservation.reservationId}`}>
-                            {updating === reservation.reservationId ? 'ĐANG CẬP NHẬT...' : 'CẬP NHẬT TRẠNG THÁI'}
-                          </button>
-                        </div>
+                      {transitionOptions.length > 0 && (
+                        isEditing ? (
+                          <div className="admin-reservation-transition">
+                            <label>
+                              <span>TRẠNG THÁI MỚI</span>
+                              <select
+                                aria-label={`Trạng thái mới cho đặt bàn #${reservation.reservationId}`}
+                                value={editing.action}
+                                disabled={updating === reservation.reservationId}
+                                onChange={(event) => setEditing({
+                                  reservationId: reservation.reservationId,
+                                  action: event.target.value as ReservationTransition | '',
+                                })}
+                              >
+                                <option value="">Chọn trạng thái...</option>
+                                {transitionOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="admin-card-actions admin-card-actions--split">
+                              <button
+                                className="admin-cancel-action"
+                                type="button"
+                                disabled={updating === reservation.reservationId}
+                                onClick={() => setEditing(null)}
+                              >
+                                ĐÓNG
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!editing.action || updating === reservation.reservationId}
+                                onClick={() => {
+                                  if (editing.action) void transition(reservation, editing.action)
+                                }}
+                                aria-label={`Xác nhận trạng thái đặt bàn #${reservation.reservationId}`}
+                              >
+                                {updating === reservation.reservationId ? 'ĐANG CẬP NHẬT...' : 'XÁC NHẬN'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="admin-card-actions">
+                            <button
+                              type="button"
+                              onClick={() => setEditing({ reservationId: reservation.reservationId, action: '' })}
+                              aria-label={`Cập nhật trạng thái đặt bàn #${reservation.reservationId}`}
+                            >
+                              CẬP NHẬT TRẠNG THÁI
+                            </button>
+                          </div>
+                        )
                       )}
                     </article>
                   )
