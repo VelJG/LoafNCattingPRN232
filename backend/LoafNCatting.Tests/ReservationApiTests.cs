@@ -35,7 +35,11 @@ public sealed class ReservationApiTests
         Assert.IsNotNull(reservation);
         Assert.AreEqual(registered.UserId, reservation.CustomerUserId);
         Assert.AreEqual("Đang chờ", reservation.Status);
-        Assert.AreEqual(1, reservation.Table.TableId);
+        Assert.AreEqual(120, reservation.DurationMinutes);
+        Assert.IsFalse(
+            (await response.Content.ReadAsStringAsync()).Contains(
+                "\"table\"",
+                StringComparison.OrdinalIgnoreCase));
 
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<LoafNcattingPrn232Context>();

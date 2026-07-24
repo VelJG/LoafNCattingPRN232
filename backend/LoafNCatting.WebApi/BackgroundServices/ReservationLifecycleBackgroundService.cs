@@ -61,7 +61,7 @@ public sealed class ReservationLifecycleBackgroundService : BackgroundService
             foreach (var reservationId in result.EndingSoonReservationIds)
             {
                 _logger.LogInformation(
-                    "Reservation {ReservationId} is within 10 minutes of its 90-minute end time. Store notification has been processed.",
+                    "Reservation {ReservationId} is within 10 minutes of its 120-minute expected end time. Store notification has been processed.",
                     reservationId);
             }
 

@@ -38,7 +38,7 @@ public sealed class ReservationWalkInServiceTests
         Assert.AreEqual("Đang sử dụng", result.TableStatus);
         Assert.AreEqual(1, result.Table.TableId);
         Assert.AreEqual(new TimeOnly(17, 10), result.Time);
-        Assert.AreEqual(new DateTimeOffset(2026, 7, 22, 18, 40, 0, TimeSpan.FromHours(7)), result.EndAt);
+        Assert.AreEqual(new DateTimeOffset(2026, 7, 22, 19, 10, 0, TimeSpan.FromHours(7)), result.EndAt);
         Assert.AreEqual(0, await data.DbContext.Notifications.CountAsync());
     }
 
@@ -80,7 +80,7 @@ public sealed class ReservationWalkInServiceTests
             reservationId: 1,
             tableId: 1,
             BusinessDate,
-            new TimeOnly(18, 40),
+            new TimeOnly(19, 10),
             ReservationTestData.PendingStatusId);
         await data.DbContext.SaveChangesAsync();
 
@@ -117,7 +117,7 @@ public sealed class ReservationWalkInServiceTests
 
     [TestMethod]
     [DataRow(7, 59)]
-    [DataRow(20, 31)]
+    [DataRow(20, 1)]
     public async Task CreateWalkInAsync_OutsideOperatingWindow_IsRejected(
         int hour,
         int minute)

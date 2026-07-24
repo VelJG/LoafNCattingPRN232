@@ -9,7 +9,7 @@ namespace LoafNCatting.Services.Services;
 
 public sealed class ReservationService : IReservationService
 {
-    private const int ReservationDurationMinutes = 90;
+    private const int ReservationDurationMinutes = 120;
     private const int MinimumAdvanceMinutes = 30;
     private const int MaximumAdvanceDays = 7;
     private const int MinimumCustomerCancellationMinutes = 120;
@@ -19,9 +19,9 @@ public sealed class ReservationService : IReservationService
     private const int MaximumGuestPhoneNumberLength = 20;
 
     private static readonly TimeOnly FirstBookableTime = new(8, 30);
-    private static readonly TimeOnly LastBookableTime = new(20, 30);
+    private static readonly TimeOnly LastBookableTime = new(20, 0);
     private static readonly TimeOnly FirstWalkInTime = new(8, 0);
-    private static readonly TimeOnly LastWalkInTime = new(20, 30);
+    private static readonly TimeOnly LastWalkInTime = new(20, 0);
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private const string PendingReservationStatus = "Đang chờ";
@@ -72,7 +72,6 @@ public sealed class ReservationService : IReservationService
             .Entities
             .AsNoTracking()
             .Include(reservation => reservation.Status)
-            .Include(reservation => reservation.Table)
             .Where(reservation => reservation.UserId == customerUserId)
             .OrderByDescending(reservation => reservation.Date)
             .ThenByDescending(reservation => reservation.Time)
@@ -97,7 +96,6 @@ public sealed class ReservationService : IReservationService
             .Entities
             .AsNoTracking()
             .Include(current => current.Status)
-            .Include(current => current.Table)
             .SingleOrDefaultAsync(
                 current =>
                     current.ReservationId == reservationId &&
@@ -226,7 +224,6 @@ public sealed class ReservationService : IReservationService
                 ReservationDurationMinutes,
                 startAt,
                 endAt,
-                suggestedTable,
                 createdAtUtc);
         }
         catch
@@ -406,7 +403,7 @@ public sealed class ReservationService : IReservationService
         if (time < FirstWalkInTime || time > LastWalkInTime)
         {
             throw new InvalidOperationException(
-                "Walk-ins can start only between 08:00 and 20:30 so the 90-minute visit ends by closing time.");
+                "Walk-ins can start only between 08:00 and 20:00 so the 120-minute expected visit ends by closing time.");
         }
 
         await _unitOfWork.BeginTransactionAsync(
@@ -422,7 +419,7 @@ public sealed class ReservationService : IReservationService
                 numberOfGuests,
                 cancellationToken)
                 ?? throw new InvalidOperationException(
-                    "No table is available for this walk-in party for the next 90 minutes.");
+                    "No table is available for this walk-in party for the next 120 minutes.");
             var checkedInStatus = await GetReservationStatusAsync(
                 CheckedInReservationStatus,
                 cancellationToken);
@@ -638,18 +635,41 @@ public sealed class ReservationService : IReservationService
                     "The 30-minute table hold window has elapsed.");
             }
 
-            var currentTableStatusName = reservation.Table.TableStatus.StatusName;
-            if (!string.Equals(
+            var assignedTable = reservation.Table;
+            var currentTableStatusName = assignedTable.TableStatus.StatusName;
+            var assignedTableCanBeUsed =
+                assignedTable.Capacity >= reservation.NumberOfGuests &&
+                (string.Equals(
                     currentTableStatusName,
                     AvailableTableStatus,
-                    StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(
+                    StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(
+                    currentTableStatusName,
+                    ReservedTableStatus,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (!assignedTableCanBeUsed)
+            {
+                var replacementTable = await FindAvailableCheckInTableForUpdateAsync(
+                    reservation,
+                    cancellationToken)
+                    ?? throw new InvalidOperationException(
+                        "No suitable table is currently available for check-in.");
+
+                if (string.Equals(
                     currentTableStatusName,
                     ReservedTableStatus,
                     StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    $"The assigned table cannot be occupied because its current status is '{currentTableStatusName}'.");
+                {
+                    var availableStatus = await GetTableStatusAsync(
+                        AvailableTableStatus,
+                        cancellationToken);
+                    assignedTable.TableStatusId = availableStatus.TableStatusId;
+                    assignedTable.TableStatus = availableStatus;
+                }
+
+                reservation.TableId = replacementTable.TableId;
+                reservation.Table = replacementTable;
             }
 
             var checkedInStatus = await GetReservationStatusAsync(
@@ -764,21 +784,14 @@ public sealed class ReservationService : IReservationService
             numberOfGuests,
             cancellationToken);
 
-        return suggestedTable is null
-            ? new ReservationAvailabilityDto(
-                false,
-                "No table is available for the requested party and time slot.",
-                ReservationDurationMinutes,
-                startAt,
-                endAt,
-                null)
-            : new ReservationAvailabilityDto(
-                true,
-                null,
-                ReservationDurationMinutes,
-                startAt,
-                endAt,
-                suggestedTable);
+        return new ReservationAvailabilityDto(
+            suggestedTable is not null,
+            suggestedTable is null
+                ? "No table is available for the requested party and time slot."
+                : null,
+            ReservationDurationMinutes,
+            startAt,
+            endAt);
     }
 
     public async Task<ReservationLifecycleResultDto> ProcessDueReservationsAsync(
@@ -962,7 +975,7 @@ public sealed class ReservationService : IReservationService
                     await _notificationService.QueueForActiveStaffIfMissingAsync(
                         new NotificationDraft(
                             "Reservation ending soon",
-                            $"Reservation #{reservation.ReservationId} at table {reservation.Table.TableName} will reach its 90-minute end time at {endAt:HH:mm}.",
+                            $"Reservation #{reservation.ReservationId} at table {reservation.Table.TableName} will reach its 120-minute expected end time at {endAt:HH:mm}.",
                             NotificationTypes.ReservationEndingSoon),
                         cancellationToken);
                     endingSoonReservationIds.Add(reservation.ReservationId);
@@ -1004,7 +1017,7 @@ public sealed class ReservationService : IReservationService
         if (time < FirstBookableTime || time > LastBookableTime)
         {
             throw new ArgumentException(
-                "Reservation time must be between 08:30 and 20:30.");
+                "Reservation time must be between 08:30 and 20:00.");
         }
 
         if (time.Ticks % TimeSpan.TicksPerMinute != 0 || time.Minute % 30 != 0)
@@ -1111,6 +1124,50 @@ public sealed class ReservationService : IReservationService
             .AsNoTracking()
             .Where(table =>
                 table.Capacity >= numberOfGuests &&
+                table.TableStatus.StatusName == AvailableTableStatus &&
+                !conflictingTableIds.Contains(table.TableId))
+            .OrderBy(table => table.Capacity)
+            .ThenBy(table => table.TableId)
+            .Select(table => (int?)table.TableId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (!selectedTableId.HasValue)
+        {
+            return null;
+        }
+
+        return await tableRepository
+            .Entities
+            .Include(table => table.TableStatus)
+            .SingleAsync(
+                table => table.TableId == selectedTableId.Value,
+                cancellationToken);
+    }
+
+    private async Task<RestaurantTable?> FindAvailableCheckInTableForUpdateAsync(
+        Reservation reservation,
+        CancellationToken cancellationToken)
+    {
+        var endTime = reservation.Time.AddMinutes(ReservationDurationMinutes);
+        var earliestOverlappingStart =
+            reservation.Time.AddMinutes(-ReservationDurationMinutes);
+        var conflictingTableIds = _unitOfWork.Repository<Reservation>()
+            .Entities
+            .AsNoTracking()
+            .Where(current =>
+                current.ReservationId != reservation.ReservationId &&
+                current.Date == reservation.Date &&
+                BlockingReservationStatuses.Contains(current.Status.StatusName) &&
+                current.Time < endTime &&
+                current.Time > earliestOverlappingStart)
+            .Select(current => current.TableId)
+            .Distinct();
+
+        var tableRepository = _unitOfWork.Repository<RestaurantTable>();
+        var selectedTableId = await tableRepository
+            .Entities
+            .AsNoTracking()
+            .Where(table =>
+                table.Capacity >= reservation.NumberOfGuests &&
                 table.TableStatus.StatusName == AvailableTableStatus &&
                 !conflictingTableIds.Contains(table.TableId))
             .OrderBy(table => table.Capacity)
@@ -1288,12 +1345,6 @@ public sealed class ReservationService : IReservationService
             ReservationDurationMinutes,
             startAt,
             startAt.AddMinutes(ReservationDurationMinutes),
-            new SuggestedTableDto(
-                reservation.Table.TableId,
-                reservation.Table.TableName,
-                reservation.Table.Capacity,
-                reservation.Table.Area,
-                reservation.Table.Description),
             reservation.CreatedAt);
     }
 

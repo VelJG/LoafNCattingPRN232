@@ -41,13 +41,6 @@ const availability = {
   durationMinutes: 120,
   startAt: '2026-07-24T18:00:00+07:00',
   endAt: '2026-07-24T20:00:00+07:00',
-  suggestedTable: {
-    tableId: 4,
-    tableName: 'Bàn Cửa Sổ 04',
-    capacity: 4,
-    area: 'Cửa sổ',
-    description: null,
-  },
 }
 
 afterEach(() => vi.restoreAllMocks())
@@ -70,16 +63,14 @@ describe('reservation page', () => {
         durationMinutes: 120,
         startAt: availability.startAt,
         endAt: availability.endAt,
-        table: availability.suggestedTable,
         createdAtUtc: '2026-07-22T14:00:00Z',
       })
     renderPage()
 
     await userEvent.clear(screen.getByLabelText('Ngày đặt bàn'))
     await userEvent.type(screen.getByLabelText('Ngày đặt bàn'), '2026-07-24')
-    await userEvent.clear(screen.getByLabelText('Giờ đặt bàn'))
-    await userEvent.type(screen.getByLabelText('Giờ đặt bàn'), '18:00')
-    await userEvent.click(screen.getByRole('button', { name: /bàn 4.*4 khách/i }))
+    await userEvent.selectOptions(screen.getByLabelText('Giờ đặt bàn'), '18:00')
+    await userEvent.selectOptions(screen.getByLabelText('Số khách'), '4')
     await userEvent.click(screen.getByRole('button', { name: /xác nhận đặt bàn/i }))
 
     expect(getAvailability).toHaveBeenCalledWith({
@@ -93,7 +84,9 @@ describe('reservation page', () => {
       guestPhoneNumber: '0900000001',
       note: null,
     }, 'customer-token')
-    expect(await screen.findByText('Đã giữ Bàn Cửa Sổ 04 cho bạn.')).toBeInTheDocument()
+    expect(await screen.findByText(
+      'Yêu cầu đặt chỗ đã được gửi. Vui lòng chờ quán xác nhận.',
+    )).toBeInTheDocument()
   })
 
   it('shows the backend availability reason without clearing the form', async () => {
@@ -101,7 +94,6 @@ describe('reservation page', () => {
       ...availability,
       isAvailable: false,
       reason: 'Khung giờ này đã kín chỗ.',
-      suggestedTable: null,
     })
     const createReservation = vi.spyOn(reservationApi, 'createReservation')
     renderPage()

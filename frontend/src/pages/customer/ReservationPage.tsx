@@ -5,7 +5,6 @@ import {
   createReservation,
   getReservationAvailability,
 } from '../../features/reservations/reservationApi'
-import { ReservationTableChoice } from '../../features/reservations/ReservationTableChoice'
 
 function defaultDate() {
   const date = new Date()
@@ -13,10 +12,12 @@ function defaultDate() {
   return date.toISOString().slice(0, 10)
 }
 
-function displayDate(value: string) {
-  const [year, month, day] = value.split('-')
-  return year && month && day ? `${day}/${month}/${year}` : value
-}
+const bookingSlots = Array.from({ length: 24 }, (_, index) => {
+  const totalMinutes = 8 * 60 + 30 + index * 30
+  const hour = Math.floor(totalMinutes / 60).toString().padStart(2, '0')
+  const minute = (totalMinutes % 60).toString().padStart(2, '0')
+  return `${hour}:${minute}`
+})
 
 export function ReservationPage() {
   const auth = useAuth()
@@ -37,17 +38,17 @@ export function ReservationPage() {
     try {
       const input = { date, time, numberOfGuests: guests }
       const availability = await getReservationAvailability(input)
-      if (!availability.isAvailable || !availability.suggestedTable) {
+      if (!availability.isAvailable) {
         setError(availability.reason || 'Quán chưa còn bàn phù hợp trong khung giờ này.')
         return
       }
-      const reservation = await createReservation({
+      await createReservation({
         ...input,
         guestName: session.user.name,
         guestPhoneNumber: session.user.phoneNumber,
         note: null,
       }, session.token)
-      setSuccess(`Đã giữ ${reservation.table.tableName} cho bạn.`)
+      setSuccess('Yêu cầu đặt chỗ đã được gửi. Vui lòng chờ quán xác nhận.')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không thể đặt bàn. Vui lòng thử lại.')
     } finally {
@@ -59,34 +60,29 @@ export function ReservationPage() {
     <section className="customer-v2-page reservation-v2-page">
       <div className="reservation-v2-hero">
         <p>ĐẶT CHỖ</p>
-        <h1>Giữ một chỗ ngồi <em>bên cửa sổ.</em></h1>
-        <span>Chọn chỗ ngồi ưng ý trước khi quán đông khách.</span>
+        <h1>Đặt lịch ghé quán <em>cùng những chú mèo.</em></h1>
+        <span>Chọn ngày, giờ và số khách; quán sẽ sắp xếp bàn phù hợp.</span>
       </div>
       <form className="reservation-v2-form" onSubmit={submit}>
         <div className="reservation-v2-fields">
           <label className="reservation-v2-pill">
             <MdCalendarToday aria-hidden="true" />
-            <span className="reservation-v2-value">{displayDate(date)}</span>
             <input className="reservation-v2-native-input" aria-label="Ngày đặt bàn" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
           </label>
           <label className="reservation-v2-pill">
             <MdSchedule aria-hidden="true" />
-            <span className="reservation-v2-value">{time}</span>
-            <input className="reservation-v2-native-input" aria-label="Giờ đặt bàn" type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+            <select className="reservation-v2-native-input" aria-label="Giờ đặt bàn" value={time} onChange={(event) => setTime(event.target.value)} required>
+              {bookingSlots.map((slot) => <option value={slot} key={slot}>{slot}</option>)}
+            </select>
           </label>
-          <div className="reservation-v2-pill reservation-v2-pill--summary">
-            <MdGroup aria-hidden="true" /><span>{guests} khách</span>
-          </div>
-        </div>
-        <div className="reservation-v2-tables" aria-label="Chọn số khách">
-          {[2, 4, 6, 8].map((capacity) => (
-            <ReservationTableChoice
-              capacity={capacity}
-              selected={guests === capacity}
-              onSelect={() => setGuests(capacity)}
-              key={capacity}
-            />
-          ))}
+          <label className="reservation-v2-pill">
+            <MdGroup aria-hidden="true" />
+            <select className="reservation-v2-native-input" aria-label="Số khách" value={guests} onChange={(event) => setGuests(Number(event.target.value))} required>
+              {Array.from({ length: 8 }, (_, index) => index + 1).map((count) => (
+                <option value={count} key={count}>{count} khách</option>
+              ))}
+            </select>
+          </label>
         </div>
         {error && <div className="reservation-v2-message reservation-v2-message--error" role="alert">{error}</div>}
         {success && <div className="reservation-v2-message reservation-v2-message--success" role="status">{success}</div>}
