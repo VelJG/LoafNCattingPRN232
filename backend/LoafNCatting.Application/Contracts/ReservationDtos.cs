@@ -23,8 +23,7 @@ public sealed record ReservationAvailabilityDto(
     string? Reason,
     int DurationMinutes,
     DateTimeOffset StartAt,
-    DateTimeOffset EndAt,
-    SuggestedTableDto? SuggestedTable);
+    DateTimeOffset EndAt);
 
 public sealed class CreateReservationRequest
 {
@@ -71,7 +70,6 @@ public sealed record ReservationDto(
     int DurationMinutes,
     DateTimeOffset StartAt,
     DateTimeOffset EndAt,
-    SuggestedTableDto Table,
     DateTime CreatedAtUtc);
 
 public sealed record StoreReservationDto(

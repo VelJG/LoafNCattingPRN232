@@ -329,6 +329,11 @@
 .admin-v2 .admin-reservation-card > header { display: flex; align-items: center; gap: 10px; }
 .admin-v2 .admin-reservation-card > header > strong { flex: 1; font: 700 15px var(--font-mono); }
 .admin-v2 .admin-reservation-card > p { margin-top: 8px; }
+.admin-v2 .admin-reservation-transition { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(95,43,21,.2); }
+.admin-v2 .admin-reservation-transition label { display: grid; gap: 7px; }
+.admin-v2 .admin-reservation-transition label > span { color: var(--app-muted); font: 700 10px var(--font-mono); letter-spacing: 1px; }
+.admin-v2 .admin-reservation-transition select { width: 100%; min-height: 42px; padding: 0 38px 0 14px; border: 1px solid var(--app-ink); border-radius: 8px; color: var(--app-ink); background: var(--app-surface); font: 500 13px var(--font-mono); cursor: pointer; }
+.admin-v2 .admin-reservation-transition select:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
 .admin-v2 .admin-card-actions--split { gap: 8px; }
 .admin-v2 .admin-card-actions--split .admin-cancel-action { margin-right: auto; border-color: rgba(194,65,45,.45); color: #c2412d; }
 .admin-v2 .admin-card-actions--split .admin-cancel-action:hover { border-color: #c2412d; background: #c2412d; }

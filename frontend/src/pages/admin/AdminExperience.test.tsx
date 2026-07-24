@@ -55,7 +55,7 @@ const reservations: StoreReservation[] = Array.from({ length: 3 }, (_, index) =>
   guestPhoneNumber: '0900000000',
   note: null,
   status: index === 0 ? 'Đang chờ' : 'Đã xác nhận',
-  durationMinutes: 90,
+  durationMinutes: 120,
   startAt: `${today}T${18 + index}:00:00+07:00`,
   endAt: `${today}T${19 + index}:30:00+07:00`,
   table: { tableId: index + 1, tableName: `Bàn ${index + 2}`, capacity: 4, area: 'Tầng 1', description: null },

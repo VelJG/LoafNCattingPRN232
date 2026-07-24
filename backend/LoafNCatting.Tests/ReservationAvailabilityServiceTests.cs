@@ -21,10 +21,10 @@ public sealed class ReservationAvailabilityServiceTests
         var result = await service.GetAvailabilityAsync(Request(8, 30, guests: 2));
 
         Assert.IsTrue(result.IsAvailable);
-        Assert.IsNotNull(result.SuggestedTable);
-        Assert.AreEqual(1, result.SuggestedTable.TableId);
-        Assert.AreEqual(2, result.SuggestedTable.Capacity);
-        Assert.AreEqual(90, result.DurationMinutes);
+        Assert.AreEqual(120, result.DurationMinutes);
+        Assert.AreEqual(
+            new DateTimeOffset(2026, 7, 22, 10, 30, 0, TimeSpan.FromHours(7)),
+            result.EndAt);
     }
 
     [TestMethod]
@@ -46,8 +46,6 @@ public sealed class ReservationAvailabilityServiceTests
         var result = await service.GetAvailabilityAsync(Request(9, 0, guests: 2));
 
         Assert.IsTrue(result.IsAvailable);
-        Assert.IsNotNull(result.SuggestedTable);
-        Assert.AreEqual(2, result.SuggestedTable.TableId);
     }
 
     [TestMethod]
@@ -65,11 +63,9 @@ public sealed class ReservationAvailabilityServiceTests
         await data.DbContext.SaveChangesAsync();
         var service = CreateService(data);
 
-        var result = await service.GetAvailabilityAsync(Request(10, 0, guests: 2));
+        var result = await service.GetAvailabilityAsync(Request(10, 30, guests: 2));
 
         Assert.IsTrue(result.IsAvailable);
-        Assert.IsNotNull(result.SuggestedTable);
-        Assert.AreEqual(1, result.SuggestedTable.TableId);
     }
 
     [TestMethod]
@@ -90,7 +86,6 @@ public sealed class ReservationAvailabilityServiceTests
         var result = await service.GetAvailabilityAsync(Request(9, 30, guests: 2));
 
         Assert.IsFalse(result.IsAvailable);
-        Assert.IsNull(result.SuggestedTable);
         Assert.IsNotNull(result.Reason);
     }
 
@@ -123,8 +118,6 @@ public sealed class ReservationAvailabilityServiceTests
         var result = await service.GetAvailabilityAsync(Request(9, 0, guests: 2));
 
         Assert.IsTrue(result.IsAvailable);
-        Assert.IsNotNull(result.SuggestedTable);
-        Assert.AreEqual(1, result.SuggestedTable.TableId);
     }
 
     [TestMethod]
@@ -142,13 +135,13 @@ public sealed class ReservationAvailabilityServiceTests
 
         var result = await service.GetAvailabilityAsync(Request(8, 30, guests: 2));
 
-        Assert.IsNotNull(result.SuggestedTable);
-        Assert.AreEqual(2, result.SuggestedTable.TableId);
+        Assert.IsTrue(result.IsAvailable);
     }
 
     [TestMethod]
     [DataRow(8, 0)]
     [DataRow(9, 15)]
+    [DataRow(20, 30)]
     [DataRow(21, 0)]
     public async Task GetAvailabilityAsync_RejectsInvalidBookingSlots(int hour, int minute)
     {

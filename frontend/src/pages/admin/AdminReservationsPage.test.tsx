@@ -19,7 +19,7 @@ const auth: AuthContextValue = {
 const reservation: StoreReservation = {
   reservationId: 9, customerUserId: 1, customerName: 'Minh Anh', customerEmail: 'minh@loaf.vn',
   date: '2026-07-22', time: '18:00:00', numberOfGuests: 4, guestName: 'Minh Anh', guestPhoneNumber: '0900000001',
-  note: null, status: 'Đang chờ', durationMinutes: 90, startAt: '2026-07-22T18:00:00+07:00', endAt: '2026-07-22T19:30:00+07:00',
+  note: null, status: 'Đang chờ', durationMinutes: 120, startAt: '2026-07-22T18:00:00+07:00', endAt: '2026-07-22T20:00:00+07:00',
   table: { tableId: 4, tableName: 'Bàn 4', capacity: 4, area: 'Tầng 1', description: null }, tableStatus: 'Available',
   createdAtUtc: '2026-07-22T02:00:00Z', updatedAtUtc: null,
 }
@@ -31,13 +31,21 @@ function renderPage() {
 afterEach(() => vi.restoreAllMocks())
 
 describe('AdminReservationsPage', () => {
-  it('confirms a pending reservation through the store API', async () => {
+  it('requires staff to explicitly select and confirm the next reservation status', async () => {
     vi.spyOn(adminApi, 'listStoreReservations').mockResolvedValue([reservation])
     const transition = vi.spyOn(adminApi, 'transitionReservation').mockResolvedValue({ ...reservation, status: 'Đã xác nhận' })
     renderPage()
 
     expect(await screen.findByText(/bàn 4/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /cập nhật trạng thái đặt bàn #9/i }))
+    expect(transition).not.toHaveBeenCalled()
+
+    const statusSelect = screen.getByRole('combobox', { name: /trạng thái mới cho đặt bàn #9/i })
+    expect(screen.getByRole('option', { name: 'Đã xác nhận' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Đã hủy' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Hoàn thành' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(statusSelect, 'confirm')
+    await userEvent.click(screen.getByRole('button', { name: /xác nhận trạng thái đặt bàn #9/i }))
 
     expect(transition).toHaveBeenCalledWith('staff-token', 9, 'confirm')
     expect(await screen.findByText('Đã xác nhận', { selector: '.admin-status' })).toBeInTheDocument()
