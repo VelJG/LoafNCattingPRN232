@@ -64,10 +64,11 @@ describe('customer cats screens', () => {
   })
 
   it('shows the reference cat detail metrics and image fallback', async () => {
-    vi.spyOn(catalogRepository, 'listCats').mockResolvedValue(cats)
+    const getCat = vi.spyOn(catalogRepository, 'getCat').mockResolvedValue(cats[0])
     renderCats('/cats/1')
 
     expect(await screen.findByRole('heading', { name: 'Mochi' })).toBeInTheDocument()
+    expect(getCat).toHaveBeenCalledWith(1)
     expect(screen.getByText('ANH LÔNG NGẮN · ĐỰC · 2 TUỔI')).toBeInTheDocument()
     expect(screen.getByText('THÂN THIỆN')).toBeInTheDocument()
     expect(screen.getByText('4/5')).toBeInTheDocument()

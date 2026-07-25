@@ -19,8 +19,8 @@ export function CatDetailPage() {
     setLoading(true)
     setError(false)
     try {
-      const items = await catalogRepository.listCats()
-      setCat(items.find((item) => item.id === Number(catId)) ?? null)
+      const id = Number(catId)
+      setCat(Number.isInteger(id) && id > 0 ? await catalogRepository.getCat(id) : null)
     } catch {
       setError(true)
     } finally {
