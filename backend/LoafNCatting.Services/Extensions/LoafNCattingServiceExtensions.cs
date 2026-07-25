@@ -57,6 +57,7 @@ public static class LoafNCattingServiceExtensions
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICatService, CatService>();
+        services.AddScoped<IStoreLocationService, StoreLocationService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IReservationService, ReservationService>();

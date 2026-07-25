@@ -13,6 +13,13 @@ import {
   markNotificationRead,
   type CustomerNotification,
 } from '../../features/notifications/notificationApi'
+import {
+  createNotificationHubConnection,
+  notificationRealtimeChangeTypes,
+  notificationRealtimeEvents,
+  startNotificationHubConnection,
+  type NotificationChangedRealtimeEvent,
+} from '../../features/notifications/notificationSignalR'
 
 function iconFor(type: string | null): ComponentType {
   if (type?.includes('Reservation')) return MdEventAvailable
@@ -41,6 +48,45 @@ export function NotificationsPage() {
   }, [token])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    if (!token) return
+
+    const connection = createNotificationHubConnection(token)
+    const handleChanged = (notificationEvent: NotificationChangedRealtimeEvent) => {
+      setItems((current) => {
+        switch (notificationEvent.changeType) {
+          case notificationRealtimeChangeTypes.created:
+            if (!notificationEvent.notification) return current
+            return [
+              notificationEvent.notification,
+              ...current.filter((item) => item.notificationId !== notificationEvent.notification?.notificationId),
+            ]
+          case notificationRealtimeChangeTypes.read:
+            if (!notificationEvent.notification) return current
+            return current.map((item) =>
+              item.notificationId === notificationEvent.notification?.notificationId
+                ? notificationEvent.notification
+                : item,
+            )
+          case notificationRealtimeChangeTypes.readAll:
+            return current.map((item) => ({ ...item, isRead: true }))
+          default:
+            return current
+        }
+      })
+    }
+
+    connection.on(notificationRealtimeEvents.changed, handleChanged)
+    void startNotificationHubConnection(connection).catch(() => {
+      // Live updates are optional; the page still works with REST loading.
+    })
+
+    return () => {
+      connection.off(notificationRealtimeEvents.changed, handleChanged)
+      void connection.stop()
+    }
+  }, [token])
 
   const markOne = async (item: CustomerNotification) => {
     const updated = await markNotificationRead(item.notificationId, token)

@@ -29,3 +29,12 @@ public sealed record CatDto(
     int? PlayfulnessRating,
     string StatusName,
     string? PictureKey = null);
+
+public sealed record StoreLocationDto(
+    int StoreLocationId,
+    string StoreName,
+    string Address,
+    string? PhoneNumber,
+    string? OpeningHours,
+    double Latitude,
+    double Longitude);
