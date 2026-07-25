@@ -27,6 +27,7 @@ interface CartContextValue {
   isLoading: boolean
   isMutating: boolean
   error: string | null
+  toast: string | null
   checkoutOptions: CheckoutOptions | null
   completedOrder: CheckoutOrder | null
   add: (product: Product) => Promise<void>
@@ -36,6 +37,7 @@ interface CartContextValue {
   checkout: (input: CheckoutInput) => Promise<void>
   dismissError: () => void
   dismissCompletedOrder: () => void
+  dismissToast: () => void
   open: () => void
   close: () => void
 }
@@ -81,6 +83,13 @@ export function CartProvider({
   const [error, setError] = useState<string | null>(null)
   const [checkoutOptions, setCheckoutOptions] = useState<CheckoutOptions | null>(null)
   const [completedOrder, setCompletedOrder] = useState<CheckoutOrder | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 2600)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
   const applyCart = useCallback((cart: ApiCart, hint?: Product) => {
     setItems((current) => {
@@ -137,14 +146,16 @@ export function CartProvider({
     action: () => Promise<ApiCart>,
     hint?: Product,
   ) => {
-    if (isMutating) return
+    if (isMutating) return false
     setIsMutating(true)
     setError(null)
     setCompletedOrder(null)
     try {
       applyCart(await action(), hint)
+      return true
     } catch (caught) {
       setError(errorMessage(caught))
+      return false
     } finally {
       setIsMutating(false)
     }
@@ -152,7 +163,8 @@ export function CartProvider({
 
   const add = useCallback(async (product: Product) => {
     if (!token) return
-    await runMutation(() => gateway.add(token, product.id, 1), product)
+    const ok = await runMutation(() => gateway.add(token, product.id, 1), product)
+    if (ok) setToast(`Đã thêm "${product.name}" vào giỏ hàng`)
   }, [gateway, runMutation, token])
 
   const decrease = useCallback(async (productId: number) => {
@@ -202,6 +214,7 @@ export function CartProvider({
       isLoading,
       isMutating,
       error,
+      toast,
       checkoutOptions,
       completedOrder,
       add,
@@ -211,6 +224,7 @@ export function CartProvider({
       checkout,
       dismissError: () => setError(null),
       dismissCompletedOrder: () => setCompletedOrder(null),
+      dismissToast: () => setToast(null),
       open: () => setIsOpen(true),
       close: () => setIsOpen(false),
     }),
@@ -222,6 +236,7 @@ export function CartProvider({
       completedOrder,
       decrease,
       error,
+      toast,
       isLoading,
       isMutating,
       isOpen,

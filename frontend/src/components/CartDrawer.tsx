@@ -42,6 +42,15 @@ export function CartDrawer() {
 
   return (
     <>
+      {cart.toast && (
+        <div className="cart-toast" role="status" aria-live="polite">
+          <MdCheckCircle aria-hidden="true" />
+          <span>{cart.toast}</span>
+          <button type="button" onClick={cart.dismissToast} aria-label="Đóng thông báo">
+            <MdClose />
+          </button>
+        </div>
+      )}
       <button
         className={cart.isOpen ? 'drawer-scrim drawer-scrim--visible' : 'drawer-scrim'}
         type="button"

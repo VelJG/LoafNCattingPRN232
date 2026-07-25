@@ -40,14 +40,17 @@ public sealed class OrderService : IOrderService
         ValidateUserId(customerUserId, nameof(customerUserId));
         await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
 
-        var paymentMethods = await Set<PaymentMethod>()
+        var allMethods = await Set<PaymentMethod>()
             .AsNoTracking()
             .OrderBy(method => method.MethodId)
+            .ToListAsync(cancellationToken);
+        var paymentMethods = allMethods
+            .Where(method => !IsCashPayment(method.MethodName))
             .Select(method => new PaymentMethodOptionDto(
                 method.MethodId,
                 method.MethodName,
                 method.Description))
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         return new CheckoutOptionsDto(
             ["DineIn", "Takeaway"],
@@ -136,6 +139,11 @@ public sealed class OrderService : IOrderService
                     method => method.MethodId == request.PaymentMethodId,
                     cancellationToken)
                 ?? throw new KeyNotFoundException("Payment method was not found.");
+            if (IsCashPayment(paymentMethod.MethodName))
+            {
+                throw new InvalidOperationException(
+                    "Cash payment is no longer supported.");
+            }
 
             var reservation = await GetValidatedReservationAsync(
                 customerUserId,
@@ -624,6 +632,9 @@ public sealed class OrderService : IOrderService
         return ContainsAny(normalized, "pending", "dang cho", "cho thanh toan");
     }
 
+    private static bool IsCashPayment(string methodName)
+        => ContainsAny(NormalizeText(methodName), "cash", "tien mat");
+
     private static bool RequiresOnlinePayment(string methodName)
     {
         var normalized = NormalizeText(methodName);
@@ -648,7 +659,10 @@ public sealed class OrderService : IOrderService
 
     private static string NormalizeText(string value)
     {
-        var decomposed = value.Trim().Normalize(NormalizationForm.FormD);
+        var decomposed = value.Trim()
+            .Replace('Đ', 'D')
+            .Replace('đ', 'd')
+            .Normalize(NormalizationForm.FormD);
         var builder = new StringBuilder(decomposed.Length);
         foreach (var character in decomposed)
         {

@@ -511,7 +511,10 @@ public sealed class PaymentService : IPaymentService
 
     private static string NormalizeText(string value)
     {
-        var decomposed = value.Trim().Normalize(
+        var decomposed = value.Trim()
+            .Replace('Đ', 'D')
+            .Replace('đ', 'd')
+            .Normalize(
             NormalizationForm.FormD);
         var builder = new StringBuilder(decomposed.Length);
         foreach (var character in decomposed)
