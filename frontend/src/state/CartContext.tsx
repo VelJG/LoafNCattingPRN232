@@ -17,6 +17,10 @@ import {
   type CheckoutOrder,
 } from '../features/cart/cartApi'
 import { useAuth } from '../features/auth/useAuth'
+import {
+  createPaymentLink,
+  type PaymentLink,
+} from '../features/orders/orderApi'
 import type { CartLine, Product } from '../types/models'
 
 interface CartContextValue {
@@ -46,6 +50,8 @@ const CartContext = createContext<CartContextValue | null>(null)
 
 interface CartProviderProps extends PropsWithChildren {
   gateway?: CartGateway
+  paymentLinkCreator?: (token: string, orderId: number) => Promise<PaymentLink>
+  paymentRedirect?: (checkoutUrl: string) => void
 }
 
 function errorMessage(error: unknown) {
@@ -68,9 +74,15 @@ function fallbackProduct(item: ApiCart['items'][number]): Product {
   }
 }
 
+function redirectToPayment(checkoutUrl: string) {
+  window.location.assign(checkoutUrl)
+}
+
 export function CartProvider({
   children,
   gateway = cartApi,
+  paymentLinkCreator = createPaymentLink,
+  paymentRedirect = redirectToPayment,
 }: CartProviderProps) {
   const auth = useAuth()
   const token = auth.session?.user.role === 'Customer'
@@ -194,12 +206,20 @@ export function CartProvider({
       const order = await gateway.checkout(token, input)
       setItems([])
       setCompletedOrder(order)
+      const payment = await paymentLinkCreator(token, order.orderId)
+      paymentRedirect(payment.checkoutUrl)
     } catch (caught) {
       setError(errorMessage(caught))
     } finally {
       setIsMutating(false)
     }
-  }, [gateway, isMutating, token])
+  }, [
+    gateway,
+    isMutating,
+    paymentLinkCreator,
+    paymentRedirect,
+    token,
+  ])
 
   const value = useMemo<CartContextValue>(
     () => ({
