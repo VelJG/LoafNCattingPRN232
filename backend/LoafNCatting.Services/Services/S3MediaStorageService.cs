@@ -53,8 +53,7 @@ public sealed class S3MediaStorageService : IMediaStorageService
         ValidateRequest(request);
 
         var normalizedContentType = NormalizeContentType(request.ContentType);
-        var extension = GetExtension(request.FileName, normalizedContentType);
-        var key = $"{GetPrefix(kind)}/{Guid.NewGuid():N}{extension}";
+        var key = CreateKey(kind, request.FileName, normalizedContentType);
         var expiresAtUtc = DateTime.UtcNow.AddMinutes(_uploadExpiryMinutes);
         var uploadUrl = _client.GetPreSignedURL(new GetPreSignedUrlRequest
         {
@@ -70,6 +69,27 @@ public sealed class S3MediaStorageService : IMediaStorageService
             key,
             CreatePresignedDownloadUrl(key),
             expiresAtUtc);
+    }
+
+    public async Task<MediaUploadResultDto> UploadAsync(
+        MediaAssetKind kind,
+        PresignedUploadRequestDto request,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateRequest(request);
+        var normalizedContentType = NormalizeContentType(request.ContentType);
+        var key = CreateKey(kind, request.FileName, normalizedContentType);
+
+        await _client.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = _bucketName,
+            Key = key,
+            InputStream = content,
+            ContentType = normalizedContentType
+        }, cancellationToken);
+
+        return new MediaUploadResultDto(key, CreatePresignedDownloadUrl(key));
     }
 
     public string? NormalizeStoredKey(string? value)
@@ -176,6 +196,12 @@ public sealed class S3MediaStorageService : IMediaStorageService
             ? ".png"
             : ".jpg";
     }
+
+    private static string CreateKey(
+        MediaAssetKind kind,
+        string fileName,
+        string contentType)
+        => $"{GetPrefix(kind)}/{Guid.NewGuid():N}{GetExtension(fileName, contentType)}";
 
     private static string GetPrefix(MediaAssetKind kind) => kind switch
     {

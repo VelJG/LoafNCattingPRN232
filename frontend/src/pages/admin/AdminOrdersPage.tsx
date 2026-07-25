@@ -43,7 +43,9 @@ export function AdminOrdersPage() {
     setOrders(null)
     setError(false)
     listOrders(token, controller.signal)
-      .then((items) => { if (alive) setOrders(items) })
+      .then((items) => {
+        if (alive) setOrders(items)
+      })
       .catch(() => { if (alive) { setOrders([]); setError(true) } })
     return () => { alive = false; controller.abort() }
   }, [reloadKey, token])

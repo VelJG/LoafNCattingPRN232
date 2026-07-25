@@ -6,6 +6,7 @@ import {
   deleteAdminProduct,
   listAdminProducts,
   updateAdminProduct,
+  uploadProductImage,
 } from '../../features/admin/adminApi'
 import { AdminDialog } from '../../features/admin/components/AdminDialog'
 import { AdminFeedback } from '../../features/admin/components/AdminFeedback'
@@ -106,7 +107,7 @@ export function AdminCatalogPage() {
             )}
 
       <AdminDialog open={editing !== undefined} title={editing ? 'Sửa sản phẩm' : 'Thêm sản phẩm'} onClose={() => !submitting && setEditing(undefined)}>
-        <AdminProductForm categories={categories} initial={editing || null} submitting={submitting} apiError={formError} onCancel={() => setEditing(undefined)} onSubmit={saveProduct} />
+        <AdminProductForm categories={categories} initial={editing || null} submitting={submitting} apiError={formError} onCancel={() => setEditing(undefined)} onSubmit={saveProduct} onUploadPicture={(file) => uploadProductImage(token, file)} />
       </AdminDialog>
       <AdminDialog open={Boolean(deleting)} title="Xóa sản phẩm" onClose={() => !submitting && setDeleting(null)}>
         <div className="admin-confirm"><p>Bạn có chắc muốn xóa <strong>{deleting?.name}</strong>? Thao tác này không thể hoàn tác.</p><div><button type="button" onClick={() => setDeleting(null)} disabled={submitting}>HỦY</button><button className="is-danger" type="button" onClick={confirmDelete} disabled={submitting}>{submitting ? 'ĐANG XÓA...' : 'XÓA SẢN PHẨM'}</button></div></div>

@@ -57,6 +57,14 @@ public sealed class OrderService : IOrderService
             paymentMethods);
     }
 
+    public async Task<IReadOnlyList<OrderStatusOptionDto>> GetOrderStatusOptionsAsync(
+        CancellationToken cancellationToken = default)
+        => (await GetOrderStatusesAsync(cancellationToken))
+            .Select(status => new OrderStatusOptionDto(
+                status.OrderStatusId,
+                status.OrderStatusName))
+            .ToList();
+
     public async Task<IReadOnlyList<OrderDto>> GetMineAsync(
         int customerUserId,
         int? statusId,
@@ -203,6 +211,11 @@ public sealed class OrderService : IOrderService
             }
 
             var pendingStatus = await GetPendingOrderStatusAsync(cancellationToken);
+            var requiresOnlinePayment = RequiresOnlinePayment(
+                paymentMethod.MethodName);
+            var initialStatus = requiresOnlinePayment
+                ? pendingStatus
+                : await GetProcessingOrderStatusAsync(cancellationToken);
             var subtotal = requestedItems.Sum(
                 item => CurrentPrice(products[item.ProductId]) * item.Quantity);
             var orderType = request.OrderType.Trim();
@@ -219,8 +232,8 @@ public sealed class OrderService : IOrderService
                 Note = string.IsNullOrWhiteSpace(request.Note)
                     ? null
                     : request.Note.Trim(),
-                OrderStatusId = pendingStatus.OrderStatusId,
-                OrderStatus = pendingStatus,
+                OrderStatusId = initialStatus.OrderStatusId,
+                OrderStatus = initialStatus,
                 TotalPrice = subtotal + serviceFee,
                 OrderDate = now,
                 CreatedAt = now
@@ -240,8 +253,6 @@ public sealed class OrderService : IOrderService
                 });
             }
 
-            var requiresOnlinePayment = RequiresOnlinePayment(
-                paymentMethod.MethodName);
             order.Payments.Add(new Payment
             {
                 MethodId = paymentMethod.MethodId,
@@ -277,6 +288,90 @@ public sealed class OrderService : IOrderService
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             orderId = order.OrderId;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+
+        return await GetMineByIdAsync(
+            customerUserId,
+            orderId,
+            cancellationToken);
+    }
+
+    public async Task<OrderDto> CancelMineAsync(
+        int customerUserId,
+        int orderId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(customerUserId, nameof(customerUserId));
+        ValidateOrderId(orderId);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
+        {
+            await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+            var order = await OrderQuery(trackChanges: true)
+                .SingleOrDefaultAsync(
+                    current =>
+                        current.OrderId == orderId &&
+                        current.CustomerUserId == customerUserId,
+                    cancellationToken)
+                ?? throw new KeyNotFoundException("Order was not found.");
+
+            var currentState = ClassifyOrderStatus(
+                order.OrderStatus.OrderStatusName);
+            if (currentState == OrderState.Cancelled)
+            {
+                var statuses = await GetOrderStatusesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+                return ToOrderDto(order, statuses);
+            }
+
+            if (currentState != OrderState.Pending)
+            {
+                throw new InvalidOperationException(
+                    "Only pending orders can be cancelled by the customer.");
+            }
+
+            if (order.Payments.Any(payment => IsPaidPaymentStatus(payment.PaymentStatus)))
+            {
+                throw new InvalidOperationException(
+                    "Paid orders must be cancelled by store staff.");
+            }
+
+            var cancelledStatus = await GetCancelledOrderStatusAsync(cancellationToken);
+            RestoreStock(order);
+            foreach (var payment in order.Payments.Where(payment =>
+                         IsPendingPaymentStatus(payment.PaymentStatus)))
+            {
+                payment.PaymentStatus = CancelledPaymentStatus;
+            }
+
+            order.OrderStatusId = cancelledStatus.OrderStatusId;
+            order.OrderStatus = cancelledStatus;
+            order.UpdatedAt = UtcNow();
+
+            await _notificationService.QueueForUserAsync(
+                customerUserId,
+                new NotificationDraft(
+                    "Order cancelled",
+                    $"Order #{order.OrderId} was cancelled.",
+                    NotificationTypes.OrderCancelled),
+                cancellationToken);
+            await _notificationService.QueueForActiveStaffAsync(
+                new NotificationDraft(
+                    "Customer cancelled order",
+                    $"Customer cancelled order #{order.OrderId}.",
+                    NotificationTypes.OrderCancelled),
+                cancellationToken);
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch
         {
@@ -346,80 +441,63 @@ public sealed class OrderService : IOrderService
                 "Order status id must be greater than zero.");
         }
 
-        await _unitOfWork.BeginTransactionAsync(
-            IsolationLevel.Serializable,
+        await EnsureActiveStoreOperatorAsync(
+            operatorUserId,
             cancellationToken);
+        var targetStatus = await Set<OrderStatus>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                status => status.OrderStatusId == request.OrderStatusId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Order status was not found.");
+        var order = await OrderQuery(trackChanges: true)
+            .SingleOrDefaultAsync(
+                current => current.OrderId == orderId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Order was not found.");
 
-        try
+        if (order.OrderStatusId != targetStatus.OrderStatusId)
         {
-            await EnsureActiveStoreOperatorAsync(
-                operatorUserId,
-                cancellationToken);
-            var targetStatus = await Set<OrderStatus>()
-                .SingleOrDefaultAsync(
-                    status => status.OrderStatusId == request.OrderStatusId,
-                    cancellationToken)
-                ?? throw new KeyNotFoundException("Order status was not found.");
-            var order = await OrderQuery(trackChanges: true)
-                .SingleOrDefaultAsync(
-                    current => current.OrderId == orderId,
-                    cancellationToken)
-                ?? throw new KeyNotFoundException("Order was not found.");
-
-            if (order.OrderStatusId != targetStatus.OrderStatusId)
+            EnsureAllowedTransition(
+                order.OrderStatus.OrderStatusName,
+                targetStatus.OrderStatusName);
+            var targetState = ClassifyOrderStatus(
+                targetStatus.OrderStatusName);
+            if (targetState != OrderState.Cancelled &&
+                order.Payments.Any(payment =>
+                    IsPendingPaymentStatus(payment.PaymentStatus)))
             {
-                EnsureAllowedTransition(
-                    order.OrderStatus.OrderStatusName,
-                    targetStatus.OrderStatusName);
-                var targetState = ClassifyOrderStatus(
-                    targetStatus.OrderStatusName);
-                if (targetState != OrderState.Cancelled &&
-                    order.Payments.Any(payment =>
-                        IsPendingPaymentStatus(payment.PaymentStatus)))
-                {
-                    throw new InvalidOperationException(
-                        "An order awaiting online payment cannot be processed.");
-                }
+                throw new InvalidOperationException(
+                    "An order awaiting online payment cannot be processed.");
+            }
 
-                if (targetState == OrderState.Cancelled)
+            if (targetState == OrderState.Cancelled)
+            {
+                RestoreStock(order);
+                foreach (var payment in order.Payments.Where(
+                             current => IsPendingPaymentStatus(
+                                 current.PaymentStatus)))
                 {
-                    RestoreStock(order);
-                    foreach (var payment in order.Payments.Where(
-                                 current => IsPendingPaymentStatus(
-                                     current.PaymentStatus)))
-                    {
-                        payment.PaymentStatus = CancelledPaymentStatus;
-                    }
-                }
-
-                order.OrderStatusId = targetStatus.OrderStatusId;
-                order.OrderStatus = targetStatus;
-                order.StaffUserId = operatorUserId;
-                order.UpdatedAt = UtcNow();
-
-                if (order.CustomerUserId.HasValue &&
-                    order.CustomerUser?.IsActive == true)
-                {
-                    await _notificationService.QueueForUserAsync(
-                        order.CustomerUserId.Value,
-                        new NotificationDraft(
-                            targetState == OrderState.Cancelled
-                                ? "Order cancelled"
-                                : "Order status updated",
-                            $"Order #{order.OrderId} is now {targetStatus.OrderStatusName}.",
-                            targetState == OrderState.Cancelled
-                                ? NotificationTypes.OrderCancelled
-                                : NotificationTypes.OrderStatusChanged),
-                        cancellationToken);
+                    payment.PaymentStatus = CancelledPaymentStatus;
                 }
             }
 
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
-            throw;
+            order.OrderStatusId = targetStatus.OrderStatusId;
+            order.StaffUserId = operatorUserId;
+            order.UpdatedAt = UtcNow();
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            if (order.CustomerUserId.HasValue &&
+                order.CustomerUser?.IsActive == true)
+            {
+                await TryQueueOrderStatusNotificationAsync(
+                    order.CustomerUserId.Value,
+                    order.OrderId,
+                    targetStatus.OrderStatusName,
+                    targetState,
+                    cancellationToken);
+            }
         }
 
         return await GetForStoreByIdAsync(
@@ -427,7 +505,33 @@ public sealed class OrderService : IOrderService
             orderId,
             cancellationToken);
     }
-
+    private async Task TryQueueOrderStatusNotificationAsync(
+        int customerUserId,
+        int orderId,
+        string statusName,
+        OrderState targetState,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _notificationService.QueueForUserAsync(
+                customerUserId,
+                new NotificationDraft(
+                    targetState == OrderState.Cancelled
+                        ? "Order cancelled"
+                        : "Order status updated",
+                    $"Order #{orderId} is now {statusName}.",
+                    targetState == OrderState.Cancelled
+                        ? NotificationTypes.OrderCancelled
+                        : NotificationTypes.OrderStatusChanged),
+                cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Status update must not fail just because optional notification failed.
+        }
+    }
     private DbSet<T> Set<T>() where T : class
         => _unitOfWork.Repository<T>().Entities;
 
@@ -507,6 +611,32 @@ public sealed class OrderService : IOrderService
                     OrderState.Pending)
             ?? throw new InvalidOperationException(
                 "A pending order status is not configured.");
+    }
+
+    private async Task<OrderStatus> GetProcessingOrderStatusAsync(
+        CancellationToken cancellationToken)
+    {
+        var statuses = await Set<OrderStatus>()
+            .OrderBy(status => status.OrderStatusId)
+            .ToListAsync(cancellationToken);
+        return statuses.FirstOrDefault(
+                status => ClassifyOrderStatus(status.OrderStatusName) ==
+                    OrderState.Processing)
+            ?? throw new InvalidOperationException(
+                "A processing order status is not configured.");
+    }
+
+    private async Task<OrderStatus> GetCancelledOrderStatusAsync(
+        CancellationToken cancellationToken)
+    {
+        var statuses = await Set<OrderStatus>()
+            .OrderBy(status => status.OrderStatusId)
+            .ToListAsync(cancellationToken);
+        return statuses.FirstOrDefault(
+                status => ClassifyOrderStatus(status.OrderStatusName) ==
+                    OrderState.Cancelled)
+            ?? throw new InvalidOperationException(
+                "A cancelled order status is not configured.");
     }
 
     private async Task<IReadOnlyList<OrderStatus>> GetOrderStatusesAsync(
@@ -648,6 +778,12 @@ public sealed class OrderService : IOrderService
         return ContainsAny(normalized, "pending", "dang cho", "cho thanh toan");
     }
 
+    private static bool IsPaidPaymentStatus(string statusName)
+    {
+        var normalized = NormalizeText(statusName);
+        return ContainsAny(normalized, "paid", "da thanh toan", "thanh cong");
+    }
+
     private static bool IsCashPayment(string methodName)
         => ContainsAny(NormalizeText(methodName), "cash", "tien mat");
 
@@ -785,7 +921,7 @@ public sealed class OrderService : IOrderService
                 .Select(detail => new OrderItemDto(
                     detail.OrderDetailId,
                     detail.ProductId,
-                    detail.Product.Name,
+                    detail.Product?.Name ?? $"Product #{detail.ProductId}",
                     detail.Quantity,
                     detail.UnitPrice,
                     detail.Subtotal))
@@ -796,7 +932,7 @@ public sealed class OrderService : IOrderService
                     payment.PaymentId,
                     payment.PaymentAmount,
                     payment.MethodId,
-                    payment.Method.MethodName,
+                    payment.Method?.MethodName ?? "Unknown",
                     payment.PaymentStatus,
                     payment.TransactionCode,
                     payment.PaymentDate,

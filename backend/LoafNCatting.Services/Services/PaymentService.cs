@@ -144,7 +144,14 @@ public sealed class PaymentService : IPaymentService
 
         if (IsPaid(payment.PaymentStatus))
         {
-            return ToStatus(order, payment, isPaid: true);
+            await MarkPaidAsync(
+                customerUserId,
+                orderId,
+                cancellationToken);
+            return await GetCurrentStatusAsync(
+                customerUserId,
+                orderId,
+                cancellationToken);
         }
 
         if (IsCancelled(payment.PaymentStatus))
@@ -235,19 +242,40 @@ public sealed class PaymentService : IPaymentService
                 trackChanges: true,
                 cancellationToken);
             var payment = GetPrimaryPayment(order);
-            if (IsPending(payment.PaymentStatus) &&
+            var paymentWasPending = IsPending(payment.PaymentStatus);
+            if ((paymentWasPending || IsPaid(payment.PaymentStatus)) &&
                 IsPendingOrder(order.OrderStatus.OrderStatusName))
             {
-                payment.PaymentStatus = PaidPaymentStatus;
-                payment.PaidAt = UtcNow();
-                order.UpdatedAt = UtcNow();
-                await _notificationService.QueueForUserAsync(
-                    customerUserId,
-                    new NotificationDraft(
-                        "Payment successful",
-                        $"Payment for order #{orderId} was completed successfully.",
-                        NotificationTypes.PaymentSucceeded),
+                var preparingStatus = await GetPreparingOrderStatusAsync(
                     cancellationToken);
+                var now = UtcNow();
+                if (paymentWasPending)
+                {
+                    payment.PaymentStatus = PaidPaymentStatus;
+                    payment.PaidAt = now;
+                }
+
+                order.OrderStatusId = preparingStatus.OrderStatusId;
+                order.OrderStatus = preparingStatus;
+                order.UpdatedAt = now;
+
+                if (paymentWasPending)
+                {
+                    await _notificationService.QueueForUserAsync(
+                        customerUserId,
+                        new NotificationDraft(
+                            "Payment successful",
+                            $"Payment for order #{orderId} was completed. The order is being prepared.",
+                            NotificationTypes.PaymentSucceeded),
+                        cancellationToken);
+                    await _notificationService.QueueForActiveStaffAsync(
+                        new NotificationDraft(
+                            "Paid order ready to prepare",
+                            $"Order #{orderId} was paid and moved to {preparingStatus.OrderStatusName}.",
+                            NotificationTypes.OrderStatusChanged),
+                        cancellationToken);
+                }
+
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
                 return;
             }
@@ -352,6 +380,18 @@ public sealed class PaymentService : IPaymentService
 
         return await query.SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Order was not found.");
+    }
+
+    private async Task<OrderStatus> GetPreparingOrderStatusAsync(
+        CancellationToken cancellationToken)
+    {
+        var statuses = await Set<OrderStatus>()
+            .OrderBy(status => status.OrderStatusId)
+            .ToListAsync(cancellationToken);
+        return statuses.FirstOrDefault(status =>
+                IsPreparingOrder(status.OrderStatusName))
+            ?? throw new InvalidOperationException(
+                "A preparing order status is not configured.");
     }
 
     private async Task EnsureActiveCustomerAsync(
@@ -494,6 +534,14 @@ public sealed class PaymentService : IPaymentService
             "pending",
             "dang cho",
             "cho xu ly");
+
+    private static bool IsPreparingOrder(string value)
+        => ContainsAny(
+            NormalizeText(value),
+            "processing",
+            "chuan bi",
+            "pha che",
+            "dang lam");
 
     private static bool IsCancelledOrder(string value)
         => ContainsAny(

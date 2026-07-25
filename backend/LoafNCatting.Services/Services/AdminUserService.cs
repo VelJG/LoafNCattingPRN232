@@ -212,6 +212,10 @@ public sealed class AdminUserService : IAdminUserService
         var address = Clean(request.Address);
         var avatarUrl = Clean(request.AvatarUrl);
         var password = request.Password;
+        if (!requirePassword && !string.IsNullOrWhiteSpace(password))
+        {
+            throw new ArgumentException("Admins cannot change user passwords.");
+        }
 
         if (!EmailValidator.IsValid(email))
         {

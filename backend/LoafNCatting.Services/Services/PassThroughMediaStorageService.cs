@@ -16,6 +16,15 @@ public sealed class PassThroughMediaStorageService : IMediaStorageService
         throw new InvalidOperationException("Media upload storage is not configured.");
     }
 
+    public Task<MediaUploadResultDto> UploadAsync(
+        MediaAssetKind kind,
+        PresignedUploadRequestDto request,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("Media upload storage is not configured.");
+    }
+
     public string? NormalizeStoredKey(string? value) => value?.Trim();
 
     public string? ResolveDisplayUrl(string? value) => value?.Trim();

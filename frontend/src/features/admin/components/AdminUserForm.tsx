@@ -28,7 +28,7 @@ export function AdminUserForm({ roles, initial, submitting, apiError, onCancel, 
     const cleanEmail = email.trim().toLowerCase()
     const cleanPhone = phoneNumber.trim()
     const cleanRole = role.trim()
-    const cleanPassword = password.length === 0 ? null : password
+    const cleanPassword = initial ? null : (password.length === 0 ? null : password)
 
     if (!cleanName) return setValidationError('Vui lòng nhập họ và tên.')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return setValidationError('Email không hợp lệ.')
@@ -60,7 +60,7 @@ export function AdminUserForm({ roles, initial, submitting, apiError, onCancel, 
         <label><span>SỐ ĐIỆN THOẠI</span><input aria-label="Số điện thoại" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} disabled={submitting} /></label>
         <label><span>VAI TRÒ</span><select aria-label="Vai trò" value={role} onChange={(event) => setRole(event.target.value)} disabled={submitting}>{roles.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
       </div>
-      <label><span>{initial ? 'MẬT KHẨU MỚI (NẾU ĐỔI)' : 'MẬT KHẨU'}</span><input aria-label="Mật khẩu" type="password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={submitting} placeholder={initial ? 'Để trống nếu giữ mật khẩu cũ' : undefined} /></label>
+      {!initial && <label><span>MẬT KHẨU</span><input aria-label="Mật khẩu" type="password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={submitting} /></label>}
       <label><span>ĐỊA CHỈ</span><input aria-label="Địa chỉ" value={address} onChange={(event) => setAddress(event.target.value)} disabled={submitting} /></label>
       <label><span>ẢNH ĐẠI DIỆN</span><input aria-label="Ảnh đại diện" value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} disabled={submitting} /></label>
       <div className="admin-form__grid admin-form__checks">

@@ -4,6 +4,7 @@ import type {
   AdminCatInput,
   AdminCatOptions,
   AdminOrder,
+  OrderStatusOption,
   AdminProduct,
   AdminProductInput,
   AdminTable,
@@ -18,8 +19,33 @@ import type {
   StoreReservation,
 } from './adminTypes'
 
+interface MediaUploadResult {
+  s3Key: string
+  fileUrl: string
+}
+
+const uploadImage = async (token: string, kind: 'product' | 'cat', file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const descriptor = await requestJson<MediaUploadResult>(`/uploads/${kind}/file`, {
+    method: 'POST',
+    token,
+    body: formData,
+  })
+  return descriptor.s3Key
+}
+
+export const uploadProductImage = (token: string, file: File) =>
+  uploadImage(token, 'product', file)
+
+export const uploadCatImage = (token: string, file: File) =>
+  uploadImage(token, 'cat', file)
+
 export const listOrders = (token: string, signal?: AbortSignal) =>
   requestJson<AdminOrder[]>('/store/orders', { token, signal })
+
+export const listOrderStatuses = (token: string, signal?: AbortSignal) =>
+  requestJson<OrderStatusOption[]>('/store/orders/statuses', { token, signal })
 
 export const updateOrderStatus = (
   token: string,

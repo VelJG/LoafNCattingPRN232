@@ -9,6 +9,11 @@ export interface CustomerOrderItem {
   subtotal: number
 }
 
+export interface OrderStatusOption {
+  orderStatusId: number
+  orderStatusName: string
+}
+
 export interface CustomerPayment {
   paymentId: number
   paymentAmount: number
@@ -35,6 +40,7 @@ export interface CustomerOrder {
   tableId: number | null
   tableName: string | null
   reservationId: number | null
+  allowedStatusTransitions?: OrderStatusOption[]
 }
 
 export interface PaymentLink {
@@ -55,6 +61,13 @@ export interface PaymentStatus {
 
 export function listMyOrders(token: string, signal?: AbortSignal) {
   return requestJson<CustomerOrder[]>('/orders/mine', { token, signal })
+}
+
+export function cancelOrder(token: string, orderId: number) {
+  return requestJson<CustomerOrder>(`/orders/${orderId}/cancel`, {
+    method: 'PATCH',
+    token,
+  })
 }
 
 export function createPaymentLink(token: string, orderId: number) {

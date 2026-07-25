@@ -13,6 +13,9 @@ public interface IOrderService
         int? statusId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<OrderStatusOptionDto>> GetOrderStatusOptionsAsync(
+        CancellationToken cancellationToken = default);
+
     Task<OrderDto> GetMineByIdAsync(
         int customerUserId,
         int orderId,
@@ -21,6 +24,11 @@ public interface IOrderService
     Task<OrderDto> CheckoutAsync(
         int customerUserId,
         CheckoutRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderDto> CancelMineAsync(
+        int customerUserId,
+        int orderId,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<OrderDto>> GetForStoreAsync(

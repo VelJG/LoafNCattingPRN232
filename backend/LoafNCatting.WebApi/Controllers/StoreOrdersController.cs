@@ -19,6 +19,11 @@ public sealed class StoreOrdersController : ApiControllerBase
         _orderService = orderService;
     }
 
+    [HttpGet("statuses")]
+    public Task<IActionResult> GetStatuses(CancellationToken cancellationToken)
+        => HandleAsync(() => _orderService.GetOrderStatusOptionsAsync(
+            cancellationToken));
+
     [HttpGet]
     public Task<IActionResult> GetAll(
         [FromQuery] int? statusId,

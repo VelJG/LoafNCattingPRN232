@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using LoafNCatting.Application.Contracts;
 using LoafNCatting.Application.Interfaces.Repositories;
 using LoafNCatting.Application.Interfaces.Services;
@@ -10,10 +9,14 @@ namespace LoafNCatting.Services.Services;
 public sealed class AdminCatService : IAdminCatService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMediaStorageService _mediaStorage;
 
-    public AdminCatService(IUnitOfWork unitOfWork)
+    public AdminCatService(
+        IUnitOfWork unitOfWork,
+        IMediaStorageService? mediaStorage = null)
     {
         _unitOfWork = unitOfWork;
+        _mediaStorage = mediaStorage ?? PassThroughMediaStorageService.Instance;
     }
 
     public async Task<IReadOnlyList<AdminCatDto>> GetAllAsync(string? search, string? status, string? gender)
@@ -41,18 +44,61 @@ public sealed class AdminCatService : IAdminCatService
             query = query.Where(cat => cat.Gender != null && cat.Gender.GenderName == genderName);
         }
 
-        return await query
+        var items = await query
             .OrderBy(cat => cat.Name)
-            .Select(Map)
+            .Select(cat => new AdminCatDto
+            {
+                CatId = cat.CatId,
+                Name = cat.Name,
+                Age = cat.Age,
+                Gender = cat.Gender == null ? null : cat.Gender.GenderName,
+                Breed = cat.Breed,
+                Picture = cat.Picture,
+                PictureKey = cat.Picture,
+                Description = cat.Description,
+                FriendlinessRating = cat.FriendlinessRating,
+                CutenessRating = cat.CutenessRating,
+                PlayfulnessRating = cat.PlayfulnessRating,
+                Status = cat.Status.StatusName,
+                CreatedAt = cat.CreatedAt,
+                UpdatedAt = cat.UpdatedAt
+            })
             .ToListAsync();
+
+        foreach (var item in items)
+        {
+            ResolveMedia(item);
+        }
+
+        return items;
     }
 
     public async Task<AdminCatDto?> GetByIdAsync(int catId)
-        => await _unitOfWork.Repository<Cat>().Entities
+    {
+        var item = await _unitOfWork.Repository<Cat>().Entities
             .AsNoTracking()
             .Where(cat => cat.CatId == catId)
-            .Select(Map)
+            .Select(cat => new AdminCatDto
+            {
+                CatId = cat.CatId,
+                Name = cat.Name,
+                Age = cat.Age,
+                Gender = cat.Gender == null ? null : cat.Gender.GenderName,
+                Breed = cat.Breed,
+                Picture = cat.Picture,
+                PictureKey = cat.Picture,
+                Description = cat.Description,
+                FriendlinessRating = cat.FriendlinessRating,
+                CutenessRating = cat.CutenessRating,
+                PlayfulnessRating = cat.PlayfulnessRating,
+                Status = cat.Status.StatusName,
+                CreatedAt = cat.CreatedAt,
+                UpdatedAt = cat.UpdatedAt
+            })
             .FirstOrDefaultAsync();
+
+        return item is null ? null : ResolveMedia(item);
+    }
 
     public async Task<AdminCatOptionsDto> GetOptionsAsync()
         => new()
@@ -187,22 +233,12 @@ public sealed class AdminCatService : IAdminCatService
         return (statusId.Value, genderId);
     }
 
-    private static readonly Expression<Func<Cat, AdminCatDto>> Map = cat => new()
-        {
-            CatId = cat.CatId,
-            Name = cat.Name,
-            Age = cat.Age,
-            Gender = cat.Gender == null ? null : cat.Gender.GenderName,
-            Breed = cat.Breed,
-            Picture = cat.Picture,
-            Description = cat.Description,
-            FriendlinessRating = cat.FriendlinessRating,
-            CutenessRating = cat.CutenessRating,
-            PlayfulnessRating = cat.PlayfulnessRating,
-            Status = cat.Status.StatusName,
-            CreatedAt = cat.CreatedAt,
-            UpdatedAt = cat.UpdatedAt
-        };
+    private AdminCatDto ResolveMedia(AdminCatDto item)
+    {
+        item.PictureKey = _mediaStorage.NormalizeStoredKey(item.PictureKey);
+        item.Picture = _mediaStorage.ResolveDisplayUrl(item.Picture);
+        return item;
+    }
 
     private static string? Clean(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
