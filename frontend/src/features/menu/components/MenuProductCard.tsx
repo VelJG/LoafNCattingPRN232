@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { MdAdd, MdLocalCafe } from 'react-icons/md'
+import { Link } from 'react-router-dom'
 import type { Product } from '../../../types/models'
 import { formatVnd } from '../../../utils/format'
 
@@ -24,6 +25,11 @@ export function MenuProductCard({ product, onAdd }: MenuProductCardProps) {
 
   return (
     <article className="menu-v2-product-card">
+      <Link
+        className="menu-v2-product-card__detail-link"
+        to={`/menu/${product.id}`}
+        aria-label={`Xem chi tiết ${product.name}`}
+      />
       <div className="menu-v2-product-card__media">
         {imageFailed ? (
           <div
@@ -60,6 +66,7 @@ export function MenuProductCard({ product, onAdd }: MenuProductCardProps) {
             {product.discountPrice && <del>{formatVnd(product.price)}</del>}
           </div>
           <button
+            className="menu-v2-product-card__add"
             type="button"
             disabled={unavailable}
             onClick={() => onAdd(product)}

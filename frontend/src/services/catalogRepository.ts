@@ -30,6 +30,7 @@ export interface AdminProductInput {
 export interface CatalogRepository {
   listCategories(): Promise<Category[]>
   listProducts(query?: ProductQuery): Promise<Product[]>
+  getProduct(productId: number): Promise<Product | null>
   createProduct(product: AdminProductInput): Promise<Product>
   updateProduct(productId: number, product: AdminProductInput): Promise<Product>
   deleteProduct(productId: number): Promise<void>
@@ -123,6 +124,15 @@ class ApiCatalogRepository implements CatalogRepository {
     const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : ''
     const items = await readJson<ApiProduct[]>(`/products${suffix}`)
     return items.map(toProduct)
+  }
+
+  async getProduct(productId: number) {
+    try {
+      return toProduct(await readJson<ApiProduct>(`/products/${productId}`))
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('404')) return null
+      throw error
+    }
   }
 
   async createProduct(product: AdminProductInput) {
