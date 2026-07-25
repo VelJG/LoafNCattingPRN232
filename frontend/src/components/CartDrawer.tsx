@@ -16,7 +16,6 @@ export function CartDrawer() {
   const [orderType, setOrderType] = useState('Takeaway')
   const [paymentMethodId, setPaymentMethodId] = useState(0)
   const [note, setNote] = useState('')
-
   useEffect(() => {
     const options = cart.checkoutOptions
     if (!options) return
@@ -113,7 +112,7 @@ export function CartDrawer() {
                 <div className="cart-line__content">
                   <strong>{line.product.name}</strong>
                   <span>{formatVnd(line.product.discountPrice ?? line.product.price)}</span>
-                  <div className="quantity-control" aria-label={`Số lượng ${line.product.name}`}>
+                  <div className="quantity-control" aria-label={'Số lượng ' + line.product.name}>
                     <button
                       type="button"
                       disabled={cart.isMutating}
@@ -134,7 +133,7 @@ export function CartDrawer() {
                   type="button"
                   disabled={cart.isMutating}
                   onClick={() => void cart.remove(line.product.id)}
-                  aria-label={`Xóa ${line.product.name}`}
+                  aria-label={'Xóa ' + line.product.name}
                 >
                   <MdDeleteOutline />
                 </button>

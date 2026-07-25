@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LoafNCatting.WebApi.Controllers;
 
@@ -15,6 +16,10 @@ public abstract class ApiControllerBase : ControllerBase
         {
             return onSuccess(await action());
         }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            return StatusCode(499);
+        }
         catch (ArgumentException exception)
         {
             return Error(StatusCodes.Status400BadRequest, "Invalid request", exception.Message);
@@ -30,6 +35,13 @@ public abstract class ApiControllerBase : ControllerBase
         catch (KeyNotFoundException exception)
         {
             return Error(StatusCodes.Status404NotFound, "Resource not found", exception.Message);
+        }
+        catch (DbUpdateException exception)
+        {
+            return Error(
+                StatusCodes.Status409Conflict,
+                "Database update failed",
+                exception.InnerException?.Message ?? exception.Message);
         }
     }
 

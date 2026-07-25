@@ -78,6 +78,7 @@ export interface AdminProduct {
   discountPrice: number | null
   unitInStock: number
   picture: string | null
+  pictureKey?: string | null
   categoryId: number
   categoryName: string
   isAvailable: boolean
@@ -104,6 +105,7 @@ export interface AdminCat {
   gender: string | null
   breed: string | null
   picture: string | null
+  pictureKey?: string | null
   description: string | null
   friendlinessRating: number | null
   cutenessRating: number | null

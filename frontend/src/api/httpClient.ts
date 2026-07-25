@@ -39,6 +39,12 @@ export async function requestJson<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   let response: Response
+  const body = options.body === undefined
+    ? undefined
+    : options.body instanceof FormData
+      ? options.body
+      : JSON.stringify(options.body)
+  const isFormData = options.body instanceof FormData
 
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
@@ -46,11 +52,11 @@ export async function requestJson<T>(
       signal: options.signal,
       headers: {
         Accept: 'application/json',
-        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(options.body === undefined || isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
         ...options.headers,
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body,
     })
   } catch {
     throw new ApiError(

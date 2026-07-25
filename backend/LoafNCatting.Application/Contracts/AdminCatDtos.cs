@@ -8,6 +8,7 @@ public sealed class AdminCatDto
     public string? Gender { get; set; }
     public string? Breed { get; set; }
     public string? Picture { get; set; }
+    public string? PictureKey { get; set; }
     public string? Description { get; set; }
     public int? FriendlinessRating { get; set; }
     public int? CutenessRating { get; set; }
@@ -24,6 +25,7 @@ public sealed class AdminCatUpsertRequest
     public string? Gender { get; set; }
     public string? Breed { get; set; }
     public string? Picture { get; set; }
+    public string? PictureKey { get; set; }
     public string? Description { get; set; }
     public int? FriendlinessRating { get; set; }
     public int? CutenessRating { get; set; }

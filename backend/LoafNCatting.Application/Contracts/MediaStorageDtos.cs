@@ -12,3 +12,7 @@ public sealed record PresignedUploadDto(
     string S3Key,
     string FileUrl,
     DateTime ExpiresAtUtc);
+
+public sealed record MediaUploadResultDto(
+    string S3Key,
+    string FileUrl);

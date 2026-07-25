@@ -21,9 +21,36 @@ public sealed class UploadsController(IMediaStorageService mediaStorage) : ApiCo
         => HandleAsync(() => Task.FromResult(
             mediaStorage.CreateUploadUrl(MediaAssetKind.Product, request)));
 
+    [HttpPost("product/file")]
+    [Authorize(Roles = "Admin,Staff")]
+    public Task<IActionResult> UploadProduct(IFormFile file, CancellationToken cancellationToken)
+        => UploadFile(MediaAssetKind.Product, file, cancellationToken);
+
     [HttpPost("cat")]
     [Authorize(Roles = "Admin,Staff")]
     public Task<IActionResult> CreateCatUploadUrl(PresignedUploadRequestDto request)
         => HandleAsync(() => Task.FromResult(
             mediaStorage.CreateUploadUrl(MediaAssetKind.Cat, request)));
+
+    [HttpPost("cat/file")]
+    [Authorize(Roles = "Admin,Staff")]
+    public Task<IActionResult> UploadCat(IFormFile file, CancellationToken cancellationToken)
+        => UploadFile(MediaAssetKind.Cat, file, cancellationToken);
+
+    private Task<IActionResult> UploadFile(
+        MediaAssetKind kind,
+        IFormFile file,
+        CancellationToken cancellationToken)
+        => HandleAsync(async () =>
+        {
+            await using var content = file.OpenReadStream();
+            return await mediaStorage.UploadAsync(
+                kind,
+                new PresignedUploadRequestDto(
+                    file.FileName,
+                    file.ContentType,
+                    file.Length),
+                content,
+                cancellationToken);
+        });
 }

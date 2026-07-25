@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { MdDelete, MdEdit, MdPets } from 'react-icons/md'
 import { ApiError } from '../../api/httpClient'
 import {
@@ -8,6 +7,7 @@ import {
   getAdminCatOptions,
   listAdminCats,
   updateAdminCat,
+  uploadCatImage,
 } from '../../features/admin/adminApi'
 import { AdminDialog } from '../../features/admin/components/AdminDialog'
 import { AdminFeedback } from '../../features/admin/components/AdminFeedback'
@@ -29,6 +29,8 @@ interface CatFormState {
   status: string
 }
 
+const maxImageBytes = 1024 * 1024
+const allowedImageTypes = new Set(['image/jpeg', 'image/png'])
 const numberOrNull = (value: string) => value.trim() ? Number(value) : null
 
 const toInput = (form: CatFormState): AdminCatInput => ({
@@ -49,7 +51,7 @@ const toForm = (cat: AdminCat): CatFormState => ({
   age: cat.age === null ? '' : String(cat.age),
   gender: cat.gender ?? '',
   breed: cat.breed ?? '',
-  picture: cat.picture ?? '',
+  picture: cat.pictureKey ?? cat.picture ?? '',
   description: cat.description ?? '',
   friendlinessRating: cat.friendlinessRating === null ? '' : String(cat.friendlinessRating),
   cutenessRating: cat.cutenessRating === null ? '' : String(cat.cutenessRating),
@@ -64,6 +66,7 @@ function CatForm({
   apiError,
   onCancel,
   onSubmit,
+  onUploadPicture,
 }: {
   initial: AdminCat | null
   options: AdminCatOptions
@@ -71,6 +74,7 @@ function CatForm({
   apiError: string
   onCancel: () => void
   onSubmit: (input: AdminCatInput) => void
+  onUploadPicture?: (file: File) => Promise<string>
 }) {
   const [form, setForm] = useState<CatFormState>(() => initial ? toForm(initial) : {
     name: '',
@@ -85,9 +89,36 @@ function CatForm({
     status: options.statuses[0] ?? '',
   })
   const [validationError, setValidationError] = useState('')
+  const [uploadError, setUploadError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const disabled = submitting || uploading
+
+  const update = (field: keyof CatFormState, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const uploadPicture = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!onUploadPicture) return setUploadError('Chức năng upload ảnh chưa sẵn sàng.')
+    if (!allowedImageTypes.has(file.type)) return setUploadError('Chỉ cho phép ảnh JPG hoặc PNG.')
+    if (file.size > maxImageBytes) return setUploadError('Ảnh không được vượt quá 1 MB.')
+
+    setUploading(true)
+    setUploadError('')
+    try {
+      update('picture', await onUploadPicture(file))
+    } catch (caught) {
+      setUploadError(caught instanceof Error ? caught.message : 'Không thể upload ảnh.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (uploading) return
     const input = toInput(form)
     const ratings = [input.friendlinessRating, input.cutenessRating, input.playfulnessRating]
 
@@ -104,72 +135,73 @@ function CatForm({
     onSubmit(input)
   }
 
-  const update = (field: keyof CatFormState, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }))
-  }
-
   return (
     <form className="admin-form" onSubmit={submit} noValidate>
-      {(validationError || apiError) && <div className="admin-form__error" role="alert">{validationError || apiError}</div>}
+      {(validationError || uploadError || apiError) && <div className="admin-form__error" role="alert">{validationError || uploadError || apiError}</div>}
 
       <label>
         <span>TÊN MÈO</span>
-        <input aria-label="Tên mèo" value={form.name} onChange={(event) => update('name', event.target.value)} disabled={submitting} />
+        <input aria-label="Tên mèo" value={form.name} onChange={(event) => update('name', event.target.value)} disabled={disabled} />
       </label>
 
       <label>
         <span>MÔ TẢ</span>
-        <textarea aria-label="Mô tả" value={form.description} onChange={(event) => update('description', event.target.value)} disabled={submitting} />
+        <textarea aria-label="Mô tả" value={form.description} onChange={(event) => update('description', event.target.value)} disabled={disabled} />
       </label>
 
       <div className="admin-form__grid">
         <label>
           <span>TRẠNG THÁI</span>
-          <select aria-label="Trạng thái" value={form.status} onChange={(event) => update('status', event.target.value)} disabled={submitting}>
+          <select aria-label="Trạng thái" value={form.status} onChange={(event) => update('status', event.target.value)} disabled={disabled}>
             <option value="">Chọn trạng thái</option>
             {options.statuses.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
         </label>
         <label>
           <span>GIỚI TÍNH</span>
-          <select aria-label="Giới tính" value={form.gender} onChange={(event) => update('gender', event.target.value)} disabled={submitting}>
+          <select aria-label="Giới tính" value={form.gender} onChange={(event) => update('gender', event.target.value)} disabled={disabled}>
             <option value="">Chưa xác định</option>
             {options.genders.map((gender) => <option key={gender} value={gender}>{gender}</option>)}
           </select>
         </label>
         <label>
           <span>TUỔI</span>
-          <input aria-label="Tuổi" min="0" step="1" type="number" value={form.age} onChange={(event) => update('age', event.target.value)} disabled={submitting} />
+          <input aria-label="Tuổi" min="0" step="1" type="number" value={form.age} onChange={(event) => update('age', event.target.value)} disabled={disabled} />
         </label>
         <label>
           <span>GIỐNG MÈO</span>
-          <input aria-label="Giống mèo" value={form.breed} onChange={(event) => update('breed', event.target.value)} disabled={submitting} />
+          <input aria-label="Giống mèo" value={form.breed} onChange={(event) => update('breed', event.target.value)} disabled={disabled} />
         </label>
       </div>
 
       <label>
         <span>ĐƯỜNG DẪN HÌNH ẢNH</span>
-        <input aria-label="Đường dẫn hình ảnh" value={form.picture} onChange={(event) => update('picture', event.target.value)} disabled={submitting} />
+        <input aria-label="Đường dẫn hình ảnh" value={form.picture} onChange={(event) => update('picture', event.target.value)} disabled={disabled} />
+      </label>
+
+      <label>
+        <span>CHỌN ẢNH TỪ MÁY</span>
+        <input aria-label="Chọn ảnh mèo từ máy" type="file" accept="image/png,image/jpeg" onChange={uploadPicture} disabled={disabled || !onUploadPicture} />
       </label>
 
       <div className="admin-form__grid">
         <label>
           <span>THÂN THIỆN (1–5)</span>
-          <input aria-label="Mức độ thân thiện, tối đa 5" min="1" max="5" step="1" type="number" placeholder="Tối đa 5" value={form.friendlinessRating} onChange={(event) => update('friendlinessRating', event.target.value)} disabled={submitting} />
+          <input aria-label="Mức độ thân thiện, tối đa 5" min="1" max="5" step="1" type="number" placeholder="Tối đa 5" value={form.friendlinessRating} onChange={(event) => update('friendlinessRating', event.target.value)} disabled={disabled} />
         </label>
         <label>
           <span>ĐÁNG YÊU (1–5)</span>
-          <input aria-label="Mức độ đáng yêu, tối đa 5" min="1" max="5" step="1" type="number" placeholder="Tối đa 5" value={form.cutenessRating} onChange={(event) => update('cutenessRating', event.target.value)} disabled={submitting} />
+          <input aria-label="Mức độ đáng yêu, tối đa 5" min="1" max="5" step="1" type="number" placeholder="Tối đa 5" value={form.cutenessRating} onChange={(event) => update('cutenessRating', event.target.value)} disabled={disabled} />
         </label>
         <label>
           <span>TINH NGHỊCH (1–5)</span>
-          <input aria-label="Mức độ tinh nghịch, tối đa 5" min="1" max="5" step="1" type="number" placeholder="Tối đa 5" value={form.playfulnessRating} onChange={(event) => update('playfulnessRating', event.target.value)} disabled={submitting} />
+          <input aria-label="Mức độ tinh nghịch, tối đa 5" min="1" max="5" step="1" type="number" placeholder="Tối đa 5" value={form.playfulnessRating} onChange={(event) => update('playfulnessRating', event.target.value)} disabled={disabled} />
         </label>
       </div>
 
       <div className="admin-form__actions">
-        <button type="button" onClick={onCancel} disabled={submitting}>HỦY</button>
-        <button className="is-primary" type="submit" disabled={submitting}>{submitting ? 'ĐANG LƯU...' : 'LƯU MÈO →'}</button>
+        <button type="button" onClick={onCancel} disabled={disabled}>HỦY</button>
+        <button className="is-primary" type="submit" disabled={disabled}>{uploading ? 'ĐANG UPLOAD...' : submitting ? 'ĐANG LƯU...' : 'LƯU MÈO →'}</button>
       </div>
     </form>
   )
@@ -220,11 +252,11 @@ export function AdminCatsPage() {
       if (editing) {
         const updated = await updateAdminCat(token, editing.catId, input)
         setCats((current) => current?.map((cat) => cat.catId === updated.catId ? updated : cat) ?? [])
-        setToast({ message: `Đã cập nhật ${updated.name}`, tone: 'success' })
+        setToast({ message: 'Đã cập nhật ' + updated.name, tone: 'success' })
       } else {
         const created = await createAdminCat(token, input)
         setCats((current) => [created, ...(current ?? [])])
-        setToast({ message: `Đã thêm ${created.name}`, tone: 'success' })
+        setToast({ message: 'Đã thêm ' + created.name, tone: 'success' })
       }
       setEditing(undefined)
     } catch (caught) {
@@ -240,7 +272,7 @@ export function AdminCatsPage() {
     try {
       await deleteAdminCat(token, deleting.catId)
       setCats((current) => current?.filter((cat) => cat.catId !== deleting.catId) ?? [])
-      setToast({ message: `Đã xóa ${deleting.name}`, tone: 'success' })
+      setToast({ message: 'Đã xóa ' + deleting.name, tone: 'success' })
       setDeleting(null)
     } catch (caught) {
       setToast({ message: caught instanceof ApiError ? caught.detail : 'Không thể xóa mèo.', tone: 'error' })
@@ -268,8 +300,8 @@ export function AdminCatsPage() {
                     </div>
                     <div className="admin-cat-card__footer">
                       <AdminStatusChip value={cat.status} />
-                      <button type="button" aria-label={`Edit ${cat.name}`} onClick={() => { setEditing(cat); setFormError('') }}><MdEdit /></button>
-                      <button type="button" aria-label={`Delete ${cat.name}`} onClick={() => setDeleting(cat)}><MdDelete /></button>
+                      <button type="button" aria-label={'Edit ' + cat.name} onClick={() => { setEditing(cat); setFormError('') }}><MdEdit /></button>
+                      <button type="button" aria-label={'Delete ' + cat.name} onClick={() => setDeleting(cat)}><MdDelete /></button>
                     </div>
                   </article>
                 ))}
@@ -277,7 +309,7 @@ export function AdminCatsPage() {
             )}
 
       <AdminDialog open={editing !== undefined} title={editing ? 'Edit cat' : 'Add cat'} onClose={() => !submitting && setEditing(undefined)}>
-        {options && <CatForm initial={editing || null} options={options} submitting={submitting} apiError={formError} onCancel={() => setEditing(undefined)} onSubmit={saveCat} />}
+        {options && <CatForm initial={editing || null} options={options} submitting={submitting} apiError={formError} onCancel={() => setEditing(undefined)} onSubmit={saveCat} onUploadPicture={(file) => uploadCatImage(token, file)} />}
       </AdminDialog>
       <AdminDialog open={Boolean(deleting)} title="Delete cat" onClose={() => !submitting && setDeleting(null)}>
         <div className="admin-confirm"><p>Delete <strong>{deleting?.name}</strong>? This cannot be undone.</p><div><button type="button" onClick={() => setDeleting(null)} disabled={submitting}>Cancel</button><button className="is-danger" type="button" onClick={confirmDelete} disabled={submitting}>{submitting ? 'Deleting...' : 'Delete cat'}</button></div></div>

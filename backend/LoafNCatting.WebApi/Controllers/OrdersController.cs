@@ -64,6 +64,22 @@ public sealed class OrdersController : ApiControllerBase
             cancellationToken));
     }
 
+    [HttpPatch("{orderId:int}/cancel")]
+    public Task<IActionResult> Cancel(
+        int orderId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _orderService.CancelMineAsync(
+            customerUserId,
+            orderId,
+            cancellationToken));
+    }
+
     [HttpPost("checkout")]
     public Task<IActionResult> Checkout(
         [FromBody] CheckoutRequest request,

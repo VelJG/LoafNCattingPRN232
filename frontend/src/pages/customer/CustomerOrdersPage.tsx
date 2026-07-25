@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '../../api/httpClient'
 import { useAuth } from '../../features/auth/useAuth'
 import {
+  cancelOrder,
   createPaymentLink,
   getPaymentStatus,
   listMyOrders,
@@ -28,7 +29,7 @@ function normalize(value: string) {
 
 function isFinished(order: CustomerOrder) {
   const value = normalize(order.orderStatusName)
-  return ['completed', 'hoan thanh', 'cancelled', 'da huy'].some((status) =>
+  return ['completed', 'hoan thanh', 'cancelled', 'da huy', 'huy'].some((status) =>
     value.includes(status),
   )
 }
@@ -37,6 +38,19 @@ function isPendingPayment(order: CustomerOrder) {
   const value = normalize(order.payments[0]?.paymentStatus ?? '')
   return value.includes('pending') || value.includes('dang cho') ||
     value.includes('cho thanh toan')
+}
+
+function isPaidPayment(order: CustomerOrder) {
+  const value = normalize(order.payments[0]?.paymentStatus ?? '')
+  return value.includes('paid') || value.includes('da thanh toan') ||
+    value.includes('thanh cong')
+}
+
+function canCancelOrder(order: CustomerOrder) {
+  const value = normalize(order.orderStatusName)
+  const isPendingOrder = value.includes('pending') || value.includes('cho xu ly') ||
+    value.includes('dang cho')
+  return isPendingOrder && !isFinished(order) && !isPaidPayment(order)
 }
 
 function statusTone(value: string) {
@@ -63,10 +77,8 @@ function formatDateTime(value: string) {
   }).format(new Date(value))
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof ApiError
-    ? error.detail
-    : 'Không thể tải đơn hàng. Vui lòng thử lại.'
+function errorMessage(error: unknown, fallback = 'Không thể tải đơn hàng. Vui lòng thử lại.') {
+  return error instanceof ApiError ? error.detail : fallback
 }
 
 export function CustomerOrdersPage() {
@@ -78,6 +90,7 @@ export function CustomerOrdersPage() {
   const [actionError, setActionError] = useState('')
   const [payingOrderId, setPayingOrderId] = useState<number | null>(null)
   const [checkingOrderId, setCheckingOrderId] = useState<number | null>(null)
+  const [cancellingOrderId, setCancellingOrderId] = useState<number | null>(null)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!token) return
@@ -134,7 +147,7 @@ export function CustomerOrdersPage() {
       const link = await createPaymentLink(token, orderId)
       window.location.assign(link.checkoutUrl)
     } catch (caught) {
-      setActionError(errorMessage(caught))
+      setActionError(errorMessage(caught, 'Không thể tạo link thanh toán.'))
       setPayingOrderId(null)
     }
   }
@@ -147,9 +160,24 @@ export function CustomerOrdersPage() {
       await getPaymentStatus(token, orderId)
       await load()
     } catch (caught) {
-      setActionError(errorMessage(caught))
+      setActionError(errorMessage(caught, 'Không thể kiểm tra thanh toán.'))
     } finally {
       setCheckingOrderId(null)
+    }
+  }
+
+  const cancelCustomerOrder = async (orderId: number) => {
+    if (!token || cancellingOrderId !== null) return
+    if (!window.confirm('Bạn có chắc muốn hủy đơn hàng này?')) return
+    setCancellingOrderId(orderId)
+    setActionError('')
+    try {
+      const updated = await cancelOrder(token, orderId)
+      setOrders((current) => current?.map((order) => order.orderId === updated.orderId ? updated : order) ?? [updated])
+    } catch (caught) {
+      setActionError(errorMessage(caught, 'Không thể hủy đơn hàng.'))
+    } finally {
+      setCancellingOrderId(null)
     }
   }
 
@@ -214,6 +242,7 @@ export function CustomerOrdersPage() {
           {visibleOrders.map((order) => {
             const payment = order.payments[0]
             const pendingPayment = isPendingPayment(order)
+            const canCancel = canCancelOrder(order)
             return (
               <article className="customer-order-card" key={order.orderId}>
                 <header>
@@ -221,7 +250,7 @@ export function CustomerOrdersPage() {
                     <p>ĐƠN #{order.orderId}</p>
                     <h2>{formatDateTime(order.orderDate)}</h2>
                   </div>
-                  <span className={`status-chip status-chip--${statusTone(order.orderStatusName)}`}>
+                  <span className={'status-chip status-chip--' + statusTone(order.orderStatusName)}>
                     {order.orderStatusName}
                   </span>
                 </header>
@@ -256,25 +285,37 @@ export function CustomerOrdersPage() {
                   </div>
                 </footer>
 
-                {pendingPayment && (
+                {(pendingPayment || canCancel) && (
                   <div className="customer-order-actions">
-                    <button
-                      className="v2-button v2-button--primary"
-                      type="button"
-                      disabled={payingOrderId !== null}
-                      onClick={() => void startPayment(order.orderId)}
-                    >
-                      {payingOrderId === order.orderId ? 'Đang tạo link…' : 'Thanh toán PayOS'}
-                    </button>
-                    {payment?.transactionCode && (
+                    {pendingPayment && (
+                      <button
+                        className="v2-button v2-button--primary"
+                        type="button"
+                        disabled={payingOrderId !== null || cancellingOrderId !== null}
+                        onClick={() => void startPayment(order.orderId)}
+                      >
+                        {payingOrderId === order.orderId ? 'Đang tạo link…' : 'Thanh toán PayOS'}
+                      </button>
+                    )}
+                    {pendingPayment && payment?.transactionCode && (
                       <button
                         className="v2-button v2-button--secondary"
                         type="button"
-                        disabled={checkingOrderId !== null}
+                        disabled={checkingOrderId !== null || cancellingOrderId !== null}
                         onClick={() => void checkPayment(order.orderId)}
                       >
                         <MdRefresh aria-hidden="true" />
                         {checkingOrderId === order.orderId ? 'Đang kiểm tra…' : 'Kiểm tra thanh toán'}
+                      </button>
+                    )}
+                    {canCancel && (
+                      <button
+                        className="v2-button v2-button--secondary"
+                        type="button"
+                        disabled={cancellingOrderId !== null || payingOrderId !== null || checkingOrderId !== null}
+                        onClick={() => void cancelCustomerOrder(order.orderId)}
+                      >
+                        {cancellingOrderId === order.orderId ? 'Đang hủy…' : 'Hủy đơn'}
                       </button>
                     )}
                   </div>
