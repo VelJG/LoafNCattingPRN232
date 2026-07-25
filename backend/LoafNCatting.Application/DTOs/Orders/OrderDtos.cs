@@ -3,7 +3,6 @@ using System.ComponentModel.DataAnnotations;
 namespace LoafNCatting.Application.DTOs.Orders;
 
 public sealed record CheckoutRequest(
-    [property: Range(1, int.MaxValue)] int UserId,
     [property: Required, StringLength(50)] string OrderType,
     [property: Range(1, int.MaxValue)] int? TableId,
     [property: Range(1, int.MaxValue)] int? ReservationId,
@@ -21,7 +20,12 @@ public sealed record OrderDto(
     int OrderStatusId,
     string OrderStatusName,
     IReadOnlyList<OrderItemDto> Items,
-    IReadOnlyList<PaymentDto> Payments);
+    IReadOnlyList<PaymentDto> Payments,
+    IReadOnlyList<OrderStatusOptionDto> AllowedStatusTransitions);
+
+public sealed record OrderStatusOptionDto(
+    int OrderStatusId,
+    string OrderStatusName);
 
 public sealed record OrderItemDto(
     int OrderDetailId,

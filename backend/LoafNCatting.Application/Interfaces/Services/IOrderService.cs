@@ -13,7 +13,18 @@ public interface IOrderService
         int orderId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<OrderDto>> GetOrdersForCustomerAsync(
+        int customerUserId,
+        int? statusId,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderDto> GetOrderForCustomerAsync(
+        int customerUserId,
+        int orderId,
+        CancellationToken cancellationToken = default);
+
     Task<OrderDto> CheckoutAsync(
+        int customerUserId,
         CheckoutRequest request,
         CancellationToken cancellationToken = default);
 

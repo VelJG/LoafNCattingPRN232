@@ -38,6 +38,9 @@ const orders: AdminOrder[] = Array.from({ length: 6 }, (_, index) => ({
   orderType: 'DineIn',
   note: null,
   orderStatusId: index < 2 ? 1 : 3,
+  allowedStatusTransitions: index < 2
+    ? [{ orderStatusId: 2, orderStatusName: 'Đang pha chế' }, { orderStatusId: 4, orderStatusName: 'Đã hủy' }]
+    : [],
   orderStatusName: index < 2 ? 'Chờ xử lý' : 'Hoàn thành',
   items: [],
   payments: [],

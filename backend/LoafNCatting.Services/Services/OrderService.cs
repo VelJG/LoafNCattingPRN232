@@ -1,4 +1,6 @@
 using System.Data;
+using System.Globalization;
+using System.Text;
 using LoafNCatting.Application.DTOs.Orders;
 using LoafNCatting.Application.Interfaces.Repositories;
 using LoafNCatting.Application.Interfaces.Services;
@@ -46,7 +48,8 @@ public sealed class OrderService : IOrderService
             .OrderByDescending(order => order.OrderDate)
             .ToListAsync(cancellationToken);
 
-        return orders.Select(ToOrderDto).ToList();
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        return orders.Select(order => ToOrderDto(order, statuses)).ToList();
     }
 
     public async Task<OrderDto> GetOrderAsync(
@@ -58,21 +61,66 @@ public sealed class OrderService : IOrderService
             .FirstOrDefaultAsync(current => current.OrderId == orderId, cancellationToken)
             ?? throw new KeyNotFoundException("Order not found.");
 
-        return ToOrderDto(order);
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        return ToOrderDto(order, statuses);
+    }
+
+    public async Task<IReadOnlyList<OrderDto>> GetOrdersForCustomerAsync(
+        int customerUserId,
+        int? statusId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(customerUserId);
+        if (statusId is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(statusId), "Status id must be greater than zero.");
+        }
+
+        var query = OrderQuery(trackChanges: false)
+            .Where(order => order.CustomerUserId == customerUserId);
+        if (statusId.HasValue)
+        {
+            query = query.Where(order => order.OrderStatusId == statusId.Value);
+        }
+
+        var orders = await query
+            .OrderByDescending(order => order.OrderDate)
+            .ToListAsync(cancellationToken);
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        return orders.Select(order => ToOrderDto(order, statuses)).ToList();
+    }
+
+    public async Task<OrderDto> GetOrderForCustomerAsync(
+        int customerUserId,
+        int orderId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(customerUserId);
+        ValidateOrderId(orderId);
+        var order = await OrderQuery(trackChanges: false)
+            .FirstOrDefaultAsync(
+                current => current.OrderId == orderId &&
+                    current.CustomerUserId == customerUserId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Order not found.");
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        return ToOrderDto(order, statuses);
     }
 
     public async Task<OrderDto> CheckoutAsync(
+        int customerUserId,
         CheckoutRequest request,
         CancellationToken cancellationToken = default)
     {
+        ValidateUserId(customerUserId);
         ValidateCheckout(request);
         await _unitOfWork.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
 
         int orderId;
         try
         {
-            await EnsureUserExistsAsync(request.UserId, cancellationToken);
-            var cart = await FindCartAsync(request.UserId, cancellationToken);
+            await EnsureUserExistsAsync(customerUserId, cancellationToken);
+            var cart = await FindCartAsync(customerUserId, cancellationToken);
             if (cart is null || cart.CartItems.Count == 0)
             {
                 throw new InvalidOperationException("Cart is empty.");
@@ -85,7 +133,10 @@ public sealed class OrderService : IOrderService
                     cancellationToken)
                 ?? throw new KeyNotFoundException("Payment method not found.");
 
-            var reservation = await GetValidatedReservationAsync(request, cancellationToken);
+            var reservation = await GetValidatedReservationAsync(
+                customerUserId,
+                request,
+                cancellationToken);
             var tableId = request.TableId ?? reservation?.TableId;
             if (tableId.HasValue &&
                 !await Set<RestaurantTable>()
@@ -166,7 +217,7 @@ public sealed class OrderService : IOrderService
 
             var order = new Order
             {
-                CustomerUserId = request.UserId,
+                CustomerUserId = customerUserId,
                 TableId = tableId,
                 ReservationId = request.ReservationId,
                 OrderType = orderType,
@@ -208,7 +259,7 @@ public sealed class OrderService : IOrderService
             cart.CartItems.Clear();
             cart.UpdatedAt = now;
             AddOrderNotification(
-                request.UserId,
+                customerUserId,
                 "Order placed",
                 "Your order has been created successfully.");
 
@@ -246,13 +297,16 @@ public sealed class OrderService : IOrderService
 
             if (order.OrderStatusId != targetStatus.OrderStatusId)
             {
-                if (IsFinishedStatus(order.OrderStatus.OrderStatusName))
+                if (!IsTransitionAllowed(
+                        order.OrderStatus.OrderStatusName,
+                        targetStatus.OrderStatusName))
                 {
                     throw new InvalidOperationException(
-                        "A finished order cannot change status.");
+                        $"Cannot change order status from '{order.OrderStatus.OrderStatusName}' " +
+                        $"to '{targetStatus.OrderStatusName}'.");
                 }
 
-                if (IsCancelledStatus(targetStatus.OrderStatusName))
+                if (GetStatusKind(targetStatus.OrderStatusName) == OrderStatusKind.Cancelled)
                 {
                     RestoreStock(order);
                     foreach (var payment in order.Payments.Where(
@@ -310,6 +364,7 @@ public sealed class OrderService : IOrderService
             .FirstOrDefaultAsync(cart => cart.UserId == userId, cancellationToken);
 
     private async Task<Reservation?> GetValidatedReservationAsync(
+        int customerUserId,
         CheckoutRequest request,
         CancellationToken cancellationToken)
     {
@@ -325,7 +380,7 @@ public sealed class OrderService : IOrderService
                 cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
-        if (reservation.UserId.HasValue && reservation.UserId != request.UserId)
+        if (reservation.UserId.HasValue && reservation.UserId != customerUserId)
         {
             throw new InvalidOperationException(
                 "Reservation does not belong to this user.");
@@ -355,18 +410,20 @@ public sealed class OrderService : IOrderService
     private async Task<int> GetPendingOrderStatusIdAsync(
         CancellationToken cancellationToken)
     {
-        var statusId = await Set<OrderStatus>()
-            .AsNoTracking()
-            .Where(status =>
-                status.OrderStatusName == "Pending" ||
-                status.OrderStatusName == "?ang ch?")
-            .Select(status => (int?)status.OrderStatusId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return statusId
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        var pending = statuses.FirstOrDefault(status =>
+            GetStatusKind(status.OrderStatusName) == OrderStatusKind.Pending);
+        return pending?.OrderStatusId
             ?? throw new InvalidOperationException(
                 "Pending order status is not configured.");
     }
+
+    private async Task<IReadOnlyList<OrderStatus>> GetOrderStatusesAsync(
+        CancellationToken cancellationToken)
+        => await Set<OrderStatus>()
+            .AsNoTracking()
+            .OrderBy(status => status.OrderStatusId)
+            .ToListAsync(cancellationToken);
 
     private void AddOrderNotification(
         int userId,
@@ -394,13 +451,6 @@ public sealed class OrderService : IOrderService
 
     private static void ValidateCheckout(CheckoutRequest request)
     {
-        if (request.UserId <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(request.UserId),
-                "User id must be greater than zero.");
-        }
-
         if (string.IsNullOrWhiteSpace(request.OrderType))
         {
             throw new ArgumentException("Order type is required.", nameof(request.OrderType));
@@ -431,31 +481,98 @@ public sealed class OrderService : IOrderService
         }
     }
 
+    private static void ValidateUserId(int userId)
+    {
+        if (userId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(userId),
+                "User id must be greater than zero.");
+        }
+    }
+
     private static decimal CurrentPrice(Product product)
         => product.DiscountPrice ?? product.Price;
 
     private static bool RequiresOnlinePayment(string methodName)
-        => methodName.Contains("transfer", StringComparison.OrdinalIgnoreCase)
-        || methodName.Contains("bank", StringComparison.OrdinalIgnoreCase)
-        || methodName.Contains("online", StringComparison.OrdinalIgnoreCase)
-        || methodName.Contains("QR", StringComparison.OrdinalIgnoreCase)
-        || methodName.Contains("Chuy?n", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsCancelledStatus(string statusName)
-        => statusName.Contains("Cancelled", StringComparison.OrdinalIgnoreCase)
-        || statusName.Contains("Canceled", StringComparison.OrdinalIgnoreCase)
-        || statusName.Contains("H?y", StringComparison.OrdinalIgnoreCase);
+    {
+        var normalized = NormalizeName(methodName);
+        return normalized.Contains("transfer", StringComparison.Ordinal)
+            || normalized.Contains("bank", StringComparison.Ordinal)
+            || normalized.Contains("online", StringComparison.Ordinal)
+            || normalized.Contains("qr", StringComparison.Ordinal)
+            || normalized.Contains("chuyen", StringComparison.Ordinal);
+    }
 
     private static bool IsPendingPaymentStatus(string statusName)
-        => statusName.Contains("Pending", StringComparison.OrdinalIgnoreCase)
-        || statusName.Contains("ch?", StringComparison.OrdinalIgnoreCase);
+        => NormalizeName(statusName).Contains("pending", StringComparison.Ordinal)
+            || NormalizeName(statusName).Contains("cho", StringComparison.Ordinal);
 
-    private static bool IsFinishedStatus(string statusName)
-        => IsCancelledStatus(statusName)
-        || statusName.Contains("Completed", StringComparison.OrdinalIgnoreCase)
-        || statusName.Contains("Ho?n", StringComparison.OrdinalIgnoreCase);
+    private static bool IsTransitionAllowed(string currentName, string targetName)
+    {
+        var current = GetStatusKind(currentName);
+        var target = GetStatusKind(targetName);
+        return current switch
+        {
+            OrderStatusKind.Pending => target is
+                OrderStatusKind.Processing or OrderStatusKind.Cancelled,
+            OrderStatusKind.Processing => target is
+                OrderStatusKind.Completed or OrderStatusKind.Cancelled,
+            _ => false
+        };
+    }
 
-    private static OrderDto ToOrderDto(Order order)
+    private static OrderStatusKind GetStatusKind(string statusName)
+    {
+        var normalized = NormalizeName(statusName);
+        if (normalized.Contains("cancel", StringComparison.Ordinal) ||
+            normalized.Contains("huy", StringComparison.Ordinal))
+        {
+            return OrderStatusKind.Cancelled;
+        }
+
+        if (normalized.Contains("complete", StringComparison.Ordinal) ||
+            normalized.Contains("hoan thanh", StringComparison.Ordinal))
+        {
+            return OrderStatusKind.Completed;
+        }
+
+        if (normalized.Contains("pending", StringComparison.Ordinal) ||
+            normalized.Contains("dang cho", StringComparison.Ordinal) ||
+            normalized.Contains("cho xu ly", StringComparison.Ordinal))
+        {
+            return OrderStatusKind.Pending;
+        }
+
+        if (normalized.Contains("processing", StringComparison.Ordinal) ||
+            normalized.Contains("pha che", StringComparison.Ordinal) ||
+            normalized.Contains("xu ly", StringComparison.Ordinal) ||
+            normalized.Contains("chuan bi", StringComparison.Ordinal))
+        {
+            return OrderStatusKind.Processing;
+        }
+
+        return OrderStatusKind.Unknown;
+    }
+
+    private static string NormalizeName(string value)
+    {
+        var decomposed = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (var character in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(character == '\u0111' ? 'd' : character);
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private static OrderDto ToOrderDto(
+        Order order,
+        IReadOnlyList<OrderStatus> statuses)
         => new(
             order.OrderId,
             order.CustomerUserId,
@@ -485,5 +602,22 @@ public sealed class OrderService : IOrderService
                     payment.TransactionCode,
                     payment.PaymentDate,
                     payment.PaidAt))
+                .ToList(),
+            statuses
+                .Where(status => IsTransitionAllowed(
+                    order.OrderStatus.OrderStatusName,
+                    status.OrderStatusName))
+                .Select(status => new OrderStatusOptionDto(
+                    status.OrderStatusId,
+                    status.OrderStatusName))
                 .ToList());
+
+    private enum OrderStatusKind
+    {
+        Unknown,
+        Pending,
+        Processing,
+        Completed,
+        Cancelled
+    }
 }

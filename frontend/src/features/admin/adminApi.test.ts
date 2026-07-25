@@ -45,16 +45,16 @@ describe('adminApi', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/products', expect.any(Object))
   })
 
-  it('updates an order with the role header required by the backend', async () => {
+  it('updates an order with bearer authorization only', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ orderId: 1042 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await updateOrderStatus('token', 'Staff', 1042, 2)
+    await updateOrderStatus('token', 1042, 2)
 
     expect(fetchMock).toHaveBeenCalledWith('/api/orders/1042/status', expect.objectContaining({
       method: 'PATCH',
       body: JSON.stringify({ orderStatusId: 2 }),
-      headers: expect.objectContaining({ 'X-Role': 'Staff' }),
+      headers: expect.objectContaining({ Authorization: 'Bearer token' }),
     }))
   })
 

@@ -1,11 +1,15 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using LoafNCatting.Application.DTOs.Carts;
 using LoafNCatting.Application.Interfaces.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LoafNCatting.WebApi.Controllers;
 
 [ApiController]
-[Route("api/users/{userId:int}/cart")]
+[Authorize(Roles = "Customer")]
+[Route("api/cart")]
 public sealed class CartsController : ApiControllerBase
 {
     private readonly ICartService _cartService;
@@ -16,25 +20,26 @@ public sealed class CartsController : ApiControllerBase
     }
 
     [HttpGet]
-    public Task<IActionResult> GetCart(
-        int userId,
-        CancellationToken cancellationToken)
-        => HandleAsync(() => _cartService.GetCartAsync(userId, cancellationToken));
+    public Task<IActionResult> GetCart(CancellationToken cancellationToken)
+        => WithCustomer(userId => _cartService.GetCartAsync(
+            userId,
+            cancellationToken));
 
     [HttpPost("items")]
     public Task<IActionResult> AddItem(
-        int userId,
         [FromBody] AddCartItemRequest request,
         CancellationToken cancellationToken)
-        => HandleAsync(() => _cartService.AddItemAsync(userId, request, cancellationToken));
+        => WithCustomer(userId => _cartService.AddItemAsync(
+            userId,
+            request,
+            cancellationToken));
 
     [HttpPatch("items/{productId:int}")]
     public Task<IActionResult> UpdateItem(
-        int userId,
         int productId,
         [FromBody] UpdateCartItemRequest request,
         CancellationToken cancellationToken)
-        => HandleAsync(() => _cartService.UpdateItemAsync(
+        => WithCustomer(userId => _cartService.UpdateItemAsync(
             userId,
             productId,
             request,
@@ -42,17 +47,30 @@ public sealed class CartsController : ApiControllerBase
 
     [HttpDelete("items/{productId:int}")]
     public Task<IActionResult> RemoveItem(
-        int userId,
         int productId,
         CancellationToken cancellationToken)
-        => HandleAsync(() => _cartService.RemoveItemAsync(
+        => WithCustomer(userId => _cartService.RemoveItemAsync(
             userId,
             productId,
             cancellationToken));
 
     [HttpDelete]
-    public Task<IActionResult> ClearCart(
-        int userId,
-        CancellationToken cancellationToken)
-        => HandleAsync(() => _cartService.ClearAsync(userId, cancellationToken));
+    public Task<IActionResult> ClearCart(CancellationToken cancellationToken)
+        => WithCustomer(userId => _cartService.ClearAsync(
+            userId,
+            cancellationToken));
+
+    private Task<IActionResult> WithCustomer<T>(Func<int, Task<T>> action)
+    {
+        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (!int.TryParse(subject, out var customerUserId))
+        {
+            return Task.FromResult<IActionResult>(Error(
+                StatusCodes.Status401Unauthorized,
+                "Unauthorized",
+                "The access token is missing a valid subject claim."));
+        }
+
+        return HandleAsync(() => action(customerUserId));
+    }
 }

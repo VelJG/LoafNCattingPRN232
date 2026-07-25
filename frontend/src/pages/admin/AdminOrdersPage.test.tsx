@@ -19,6 +19,10 @@ const auth: AuthContextValue = {
 const pending: AdminOrder = {
   orderId: 1042, customerUserId: 1, customerName: 'Nguyễn Minh Anh', orderDate: '2026-07-22T09:12:00Z',
   totalPrice: 145000, orderType: 'DineIn', note: null, orderStatusId: 1, orderStatusName: 'Chờ xử lý',
+  allowedStatusTransitions: [
+    { orderStatusId: 2, orderStatusName: 'Đang pha chế' },
+    { orderStatusId: 4, orderStatusName: 'Đã hủy' },
+  ],
   items: [], payments: [{ paymentId: 1, paymentAmount: 145000, methodId: 1, methodName: 'Tiền mặt', paymentStatus: 'Paid', transactionCode: null, paymentDate: '2026-07-22T09:12:00Z', paidAt: '2026-07-22T09:12:00Z' }],
 }
 
@@ -44,8 +48,10 @@ describe('AdminOrdersPage', () => {
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: /cập nhật trạng thái đơn #1042/i }))
+    await userEvent.selectOptions(screen.getByRole('combobox'), '2')
+    await userEvent.click(screen.getByRole('button', { name: /xác nhận trạng thái đơn #1042/i }))
 
-    expect(update).toHaveBeenCalledWith('staff-token', 'Staff', 1042, 2)
+    expect(update).toHaveBeenCalledWith('staff-token', 1042, 2)
     expect(await screen.findByRole('status')).toHaveTextContent('Đã cập nhật đơn #1042')
   })
 })
