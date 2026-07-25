@@ -19,13 +19,13 @@ import type {
 } from './adminTypes'
 
 export const listOrders = (token: string, signal?: AbortSignal) =>
-  requestJson<AdminOrder[]>('/orders', { token, signal })
+  requestJson<AdminOrder[]>('/store/orders', { token, signal })
 
 export const updateOrderStatus = (
   token: string,
   orderId: number,
   orderStatusId: number,
-) => requestJson<AdminOrder>(`/orders/${orderId}/status`, {
+) => requestJson<AdminOrder>(`/store/orders/${orderId}/status`, {
   method: 'PATCH',
   token,
   body: { orderStatusId },

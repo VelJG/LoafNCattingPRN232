@@ -23,6 +23,8 @@ public class AuthApiFactory : WebApplicationFactory<Program>
         ReservationTestData.VietnamTime(2026, 7, 22, 7, 0));
     private readonly string _environment;
 
+    internal TestPaymentGateway PaymentGateway { get; } = new();
+
     public AuthApiFactory(string environment = "Testing")
     {
         _environment = environment;
@@ -37,6 +39,7 @@ public class AuthApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:SigningKey", SigningKey);
         builder.UseSetting("Jwt:AccessTokenMinutes", "30");
         builder.UseSetting("BootstrapAdmin:Enabled", "false");
+        builder.UseSetting("Payments:PendingPaymentExpirySeconds", "30");
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
@@ -50,6 +53,8 @@ public class AuthApiFactory : WebApplicationFactory<Program>
                         InMemoryEventId.TransactionIgnoredWarning)));
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(_clock);
+            services.RemoveAll<IPaymentGateway>();
+            services.AddSingleton<IPaymentGateway>(PaymentGateway);
         });
     }
 
@@ -138,6 +143,72 @@ public class AuthApiFactory : WebApplicationFactory<Program>
                 Area = "Center",
                 TableStatusId = 1
             });
+        await context.SaveChangesAsync();
+    }
+
+    public async Task SeedOrderingDataAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<LoafNcattingPrn232Context>();
+        if (!await context.OrderStatuses.AnyAsync())
+        {
+            context.OrderStatuses.AddRange(
+                new OrderStatus { OrderStatusId = 1, OrderStatusName = "Pending" },
+                new OrderStatus { OrderStatusId = 2, OrderStatusName = "Processing" },
+                new OrderStatus { OrderStatusId = 3, OrderStatusName = "Ready" },
+                new OrderStatus { OrderStatusId = 4, OrderStatusName = "Completed" },
+                new OrderStatus { OrderStatusId = 5, OrderStatusName = "Cancelled" });
+        }
+
+        if (!await context.PaymentMethods.AnyAsync())
+        {
+            context.PaymentMethods.AddRange(
+                new PaymentMethod
+                {
+                    MethodId = 1,
+                    MethodName = "Cash"
+                },
+                new PaymentMethod
+                {
+                    MethodId = 2,
+                    MethodName = "Bank transfer"
+                });
+        }
+
+        if (!await context.Categories.AnyAsync())
+        {
+            context.Categories.Add(new Category
+            {
+                CategoryId = 1,
+                Name = "Drinks"
+            });
+        }
+
+        if (!await context.Products.AnyAsync())
+        {
+            context.Products.AddRange(
+                new Product
+                {
+                    ProductId = 1,
+                    Name = "Cat Latte",
+                    Price = 50_000m,
+                    UnitInStock = 10,
+                    CategoryId = 1,
+                    IsAvailable = true,
+                    CreatedAt = _clock.GetUtcNow().UtcDateTime
+                },
+                new Product
+                {
+                    ProductId = 2,
+                    Name = "Butter Croissant",
+                    Price = 35_000m,
+                    UnitInStock = 5,
+                    CategoryId = 1,
+                    IsAvailable = true,
+                    CreatedAt = _clock.GetUtcNow().UtcDateTime
+                });
+        }
+
         await context.SaveChangesAsync();
     }
 }

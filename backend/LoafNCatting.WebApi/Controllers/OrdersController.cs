@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace LoafNCatting.WebApi.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Customer")]
 [Route("api/orders")]
 public sealed class OrdersController : ApiControllerBase
 {
@@ -18,25 +19,19 @@ public sealed class OrdersController : ApiControllerBase
         _orderService = orderService;
     }
 
-    [Authorize(Roles = "Admin,Staff")]
-    [HttpGet]
-    public Task<IActionResult> GetOrders(
-        [FromQuery] int? userId,
-        [FromQuery] int? statusId,
-        CancellationToken cancellationToken)
-        => HandleAsync(() => _orderService.GetOrdersAsync(
-            userId,
-            statusId,
+    [HttpGet("checkout-options")]
+    public Task<IActionResult> GetCheckoutOptions(CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _orderService.GetCheckoutOptionsAsync(
+            customerUserId,
             cancellationToken));
+    }
 
-    [Authorize(Roles = "Admin,Staff")]
-    [HttpGet("{orderId:int}")]
-    public Task<IActionResult> GetOrder(
-        int orderId,
-        CancellationToken cancellationToken)
-        => HandleAsync(() => _orderService.GetOrderAsync(orderId, cancellationToken));
-
-    [Authorize(Roles = "Customer")]
     [HttpGet("mine")]
     public Task<IActionResult> GetMine(
         [FromQuery] int? statusId,
@@ -47,14 +42,13 @@ public sealed class OrdersController : ApiControllerBase
             return InvalidSubject();
         }
 
-        return HandleAsync(() => _orderService.GetOrdersForCustomerAsync(
+        return HandleAsync(() => _orderService.GetMineAsync(
             customerUserId,
             statusId,
             cancellationToken));
     }
 
-    [Authorize(Roles = "Customer")]
-    [HttpGet("mine/{orderId:int}")]
+    [HttpGet("{orderId:int}")]
     public Task<IActionResult> GetMineById(
         int orderId,
         CancellationToken cancellationToken)
@@ -64,13 +58,12 @@ public sealed class OrdersController : ApiControllerBase
             return InvalidSubject();
         }
 
-        return HandleAsync(() => _orderService.GetOrderForCustomerAsync(
+        return HandleAsync(() => _orderService.GetMineByIdAsync(
             customerUserId,
             orderId,
             cancellationToken));
     }
 
-    [Authorize(Roles = "Customer")]
     [HttpPost("checkout")]
     public Task<IActionResult> Checkout(
         [FromBody] CheckoutRequest request,
@@ -81,28 +74,18 @@ public sealed class OrdersController : ApiControllerBase
             return InvalidSubject();
         }
 
-        return HandleAsync(() => _orderService.CheckoutAsync(
-            customerUserId,
-            request,
-            cancellationToken));
+        return HandleAsync(
+            () => _orderService.CheckoutAsync(
+                customerUserId,
+                request,
+                cancellationToken),
+            order => StatusCode(StatusCodes.Status201Created, order));
     }
-
-    [Authorize(Roles = "Admin,Staff")]
-    [HttpPatch("{orderId:int}/status")]
-    public Task<IActionResult> UpdateStatus(
-        int orderId,
-        [FromBody] OrderStatusUpdateRequest request,
-        CancellationToken cancellationToken)
-        => HandleAsync(() => _orderService.UpdateStatusAsync(
-            orderId,
-            request,
-            cancellationToken));
 
     private bool TryGetCustomerUserId(out int customerUserId)
-    {
-        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        return int.TryParse(subject, out customerUserId);
-    }
+        => int.TryParse(
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub),
+            out customerUserId);
 
     private Task<IActionResult> InvalidSubject()
         => Task.FromResult<IActionResult>(Error(

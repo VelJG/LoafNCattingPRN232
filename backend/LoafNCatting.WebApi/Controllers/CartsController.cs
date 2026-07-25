@@ -21,56 +21,88 @@ public sealed class CartsController : ApiControllerBase
 
     [HttpGet]
     public Task<IActionResult> GetCart(CancellationToken cancellationToken)
-        => WithCustomer(userId => _cartService.GetCartAsync(
-            userId,
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _cartService.GetCartAsync(
+            customerUserId,
             cancellationToken));
+    }
 
     [HttpPost("items")]
     public Task<IActionResult> AddItem(
         [FromBody] AddCartItemRequest request,
         CancellationToken cancellationToken)
-        => WithCustomer(userId => _cartService.AddItemAsync(
-            userId,
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _cartService.AddItemAsync(
+            customerUserId,
             request,
             cancellationToken));
+    }
 
     [HttpPatch("items/{productId:int}")]
     public Task<IActionResult> UpdateItem(
         int productId,
         [FromBody] UpdateCartItemRequest request,
         CancellationToken cancellationToken)
-        => WithCustomer(userId => _cartService.UpdateItemAsync(
-            userId,
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _cartService.UpdateItemAsync(
+            customerUserId,
             productId,
             request,
             cancellationToken));
+    }
 
     [HttpDelete("items/{productId:int}")]
     public Task<IActionResult> RemoveItem(
         int productId,
         CancellationToken cancellationToken)
-        => WithCustomer(userId => _cartService.RemoveItemAsync(
-            userId,
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _cartService.RemoveItemAsync(
+            customerUserId,
             productId,
             cancellationToken));
+    }
 
     [HttpDelete]
     public Task<IActionResult> ClearCart(CancellationToken cancellationToken)
-        => WithCustomer(userId => _cartService.ClearAsync(
-            userId,
-            cancellationToken));
-
-    private Task<IActionResult> WithCustomer<T>(Func<int, Task<T>> action)
     {
-        var subject = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        if (!int.TryParse(subject, out var customerUserId))
+        if (!TryGetCustomerUserId(out var customerUserId))
         {
-            return Task.FromResult<IActionResult>(Error(
-                StatusCodes.Status401Unauthorized,
-                "Unauthorized",
-                "The access token is missing a valid subject claim."));
+            return InvalidSubject();
         }
 
-        return HandleAsync(() => action(customerUserId));
+        return HandleAsync(() => _cartService.ClearAsync(
+            customerUserId,
+            cancellationToken));
     }
+
+    private bool TryGetCustomerUserId(out int customerUserId)
+        => int.TryParse(
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub),
+            out customerUserId);
+
+    private Task<IActionResult> InvalidSubject()
+        => Task.FromResult<IActionResult>(Error(
+            StatusCodes.Status401Unauthorized,
+            "Unauthorized",
+            "The access token is missing a valid subject claim."));
 }

@@ -24,8 +24,8 @@ export interface AdminNavigationItem {
 
 export const adminNavigation: readonly AdminNavigationItem[] = [
   { key: 'dashboard', to: '/admin', label: 'Tổng quan', subtitle: 'THỨ SÁU, 10/07/2026 · CA SÁNG', icon: MdDashboard, roles: ['Admin', 'Staff'] },
-  { key: 'orders', to: '/admin/orders', label: 'Đơn hàng', subtitle: 'THEO DÕI VÀ CẬP NHẬT ĐƠN', icon: MdOutlineReceiptLong, roles: ['Admin', 'Staff'], badge: '6' },
-  { key: 'reservations', to: '/admin/reservations', label: 'Đặt bàn', subtitle: 'LỊCH HẸN VÀ KHÁCH ĐẾN QUÁN', icon: MdEvent, roles: ['Admin', 'Staff'], badge: '3' },
+  { key: 'orders', to: '/admin/orders', label: 'Đơn hàng', subtitle: 'THEO DÕI VÀ CẬP NHẬT ĐƠN', icon: MdOutlineReceiptLong, roles: ['Admin', 'Staff'] },
+  { key: 'reservations', to: '/admin/reservations', label: 'Đặt bàn', subtitle: 'LỊCH HẸN VÀ KHÁCH ĐẾN QUÁN', icon: MdEvent, roles: ['Admin', 'Staff'] },
   { key: 'chat', to: '/admin/chat', label: 'Tin nhắn', subtitle: 'HỘP THƯ HỖ TRỢ KHÁCH HÀNG', icon: MdChatBubbleOutline, roles: ['Admin', 'Staff'] },
   { key: 'catalog', to: '/admin/catalog', label: 'Thực đơn', subtitle: 'SẢN PHẨM, GIÁ VÀ TỒN KHO', icon: MdLocalCafe, roles: ['Admin', 'Staff'] },
   { key: 'cats', to: '/admin/cats', label: 'Các bé mèo', subtitle: 'HỒ SƠ VÀ TRẠNG THÁI CÁC BÉ', icon: MdPets, roles: ['Admin', 'Staff'] },

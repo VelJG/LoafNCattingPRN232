@@ -9,6 +9,15 @@ public sealed record CheckoutRequest(
     [property: Range(1, int.MaxValue)] int PaymentMethodId,
     string? Note);
 
+public sealed record CheckoutOptionsDto(
+    IReadOnlyList<string> OrderTypes,
+    IReadOnlyList<PaymentMethodOptionDto> PaymentMethods);
+
+public sealed record PaymentMethodOptionDto(
+    int PaymentMethodId,
+    string Name,
+    string? Description);
+
 public sealed record OrderDto(
     int OrderId,
     int? CustomerUserId,
@@ -21,6 +30,9 @@ public sealed record OrderDto(
     string OrderStatusName,
     IReadOnlyList<OrderItemDto> Items,
     IReadOnlyList<PaymentDto> Payments,
+    int? TableId,
+    string? TableName,
+    int? ReservationId,
     IReadOnlyList<OrderStatusOptionDto> AllowedStatusTransitions);
 
 public sealed record OrderStatusOptionDto(

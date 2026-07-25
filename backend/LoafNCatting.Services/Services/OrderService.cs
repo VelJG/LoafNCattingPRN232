@@ -1,6 +1,7 @@
 using System.Data;
 using System.Globalization;
 using System.Text;
+using LoafNCatting.Application.Contracts;
 using LoafNCatting.Application.DTOs.Orders;
 using LoafNCatting.Application.Interfaces.Repositories;
 using LoafNCatting.Application.Interfaces.Services;
@@ -11,70 +12,59 @@ namespace LoafNCatting.Services.Services;
 
 public sealed class OrderService : IOrderService
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private const string CustomerRoleName = "Customer";
+    private const string StaffRoleName = "Staff";
+    private const string AdminRoleName = "Admin";
+    private const string PendingPaymentStatus = "Pending";
+    private const string PaidPaymentStatus = "Paid";
+    private const string CancelledPaymentStatus = "Cancelled";
 
-    public OrderService(IUnitOfWork unitOfWork)
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationService _notificationService;
+    private readonly TimeProvider _timeProvider;
+
+    public OrderService(
+        IUnitOfWork unitOfWork,
+        INotificationService notificationService,
+        TimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
+        _notificationService = notificationService;
+        _timeProvider = timeProvider;
     }
 
-    public async Task<IReadOnlyList<OrderDto>> GetOrdersAsync(
-        int? userId,
-        int? statusId,
+    public async Task<CheckoutOptionsDto> GetCheckoutOptionsAsync(
+        int customerUserId,
         CancellationToken cancellationToken = default)
     {
-        if (userId is <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(userId), "User id must be greater than zero.");
-        }
+        ValidateUserId(customerUserId, nameof(customerUserId));
+        await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
 
-        if (statusId is <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(statusId), "Status id must be greater than zero.");
-        }
-
-        var query = OrderQuery(trackChanges: false);
-        if (userId.HasValue)
-        {
-            query = query.Where(order => order.CustomerUserId == userId.Value);
-        }
-
-        if (statusId.HasValue)
-        {
-            query = query.Where(order => order.OrderStatusId == statusId.Value);
-        }
-
-        var orders = await query
-            .OrderByDescending(order => order.OrderDate)
+        var allMethods = await Set<PaymentMethod>()
+            .AsNoTracking()
+            .OrderBy(method => method.MethodId)
             .ToListAsync(cancellationToken);
+        var paymentMethods = allMethods
+            .Where(method => !IsCashPayment(method.MethodName))
+            .Select(method => new PaymentMethodOptionDto(
+                method.MethodId,
+                method.MethodName,
+                method.Description))
+            .ToList();
 
-        var statuses = await GetOrderStatusesAsync(cancellationToken);
-        return orders.Select(order => ToOrderDto(order, statuses)).ToList();
+        return new CheckoutOptionsDto(
+            ["DineIn", "Takeaway"],
+            paymentMethods);
     }
 
-    public async Task<OrderDto> GetOrderAsync(
-        int orderId,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateOrderId(orderId);
-        var order = await OrderQuery(trackChanges: false)
-            .FirstOrDefaultAsync(current => current.OrderId == orderId, cancellationToken)
-            ?? throw new KeyNotFoundException("Order not found.");
-
-        var statuses = await GetOrderStatusesAsync(cancellationToken);
-        return ToOrderDto(order, statuses);
-    }
-
-    public async Task<IReadOnlyList<OrderDto>> GetOrdersForCustomerAsync(
+    public async Task<IReadOnlyList<OrderDto>> GetMineAsync(
         int customerUserId,
         int? statusId,
         CancellationToken cancellationToken = default)
     {
-        ValidateUserId(customerUserId);
-        if (statusId is <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(statusId), "Status id must be greater than zero.");
-        }
+        ValidateUserId(customerUserId, nameof(customerUserId));
+        ValidateOptionalStatusId(statusId);
+        await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
 
         var query = OrderQuery(trackChanges: false)
             .Where(order => order.CustomerUserId == customerUserId);
@@ -85,24 +75,28 @@ public sealed class OrderService : IOrderService
 
         var orders = await query
             .OrderByDescending(order => order.OrderDate)
+            .ThenByDescending(order => order.OrderId)
             .ToListAsync(cancellationToken);
         var statuses = await GetOrderStatusesAsync(cancellationToken);
         return orders.Select(order => ToOrderDto(order, statuses)).ToList();
     }
 
-    public async Task<OrderDto> GetOrderForCustomerAsync(
+    public async Task<OrderDto> GetMineByIdAsync(
         int customerUserId,
         int orderId,
         CancellationToken cancellationToken = default)
     {
-        ValidateUserId(customerUserId);
+        ValidateUserId(customerUserId, nameof(customerUserId));
         ValidateOrderId(orderId);
+        await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+
         var order = await OrderQuery(trackChanges: false)
-            .FirstOrDefaultAsync(
-                current => current.OrderId == orderId &&
+            .SingleOrDefaultAsync(
+                current =>
+                    current.OrderId == orderId &&
                     current.CustomerUserId == customerUserId,
                 cancellationToken)
-            ?? throw new KeyNotFoundException("Order not found.");
+            ?? throw new KeyNotFoundException("Order was not found.");
         var statuses = await GetOrderStatusesAsync(cancellationToken);
         return ToOrderDto(order, statuses);
     }
@@ -112,14 +106,29 @@ public sealed class OrderService : IOrderService
         CheckoutRequest request,
         CancellationToken cancellationToken = default)
     {
-        ValidateUserId(customerUserId);
+        ValidateUserId(customerUserId, nameof(customerUserId));
         ValidateCheckout(request);
-        await _unitOfWork.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
 
         int orderId;
         try
         {
-            await EnsureUserExistsAsync(customerUserId, cancellationToken);
+            await EnsureActiveCustomerAsync(customerUserId, cancellationToken);
+            var hasPendingOnlinePayment = await Set<Order>()
+                .AsNoTracking()
+                .AnyAsync(
+                    order =>
+                        order.CustomerUserId == customerUserId &&
+                        order.Payments.Any(payment =>
+                            payment.PaymentStatus == PendingPaymentStatus),
+                    cancellationToken);
+            if (hasPendingOnlinePayment)
+            {
+                throw new InvalidOperationException(
+                    "Complete or cancel the pending online payment before creating another order.");
+            }
             var cart = await FindCartAsync(customerUserId, cancellationToken);
             if (cart is null || cart.CartItems.Count == 0)
             {
@@ -128,10 +137,15 @@ public sealed class OrderService : IOrderService
 
             var paymentMethod = await Set<PaymentMethod>()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(
+                .SingleOrDefaultAsync(
                     method => method.MethodId == request.PaymentMethodId,
                     cancellationToken)
-                ?? throw new KeyNotFoundException("Payment method not found.");
+                ?? throw new KeyNotFoundException("Payment method was not found.");
+            if (IsCashPayment(paymentMethod.MethodName))
+            {
+                throw new InvalidOperationException(
+                    "Cash payment is no longer supported.");
+            }
 
             var reservation = await GetValidatedReservationAsync(
                 customerUserId,
@@ -141,36 +155,39 @@ public sealed class OrderService : IOrderService
             if (tableId.HasValue &&
                 !await Set<RestaurantTable>()
                     .AsNoTracking()
-                    .AnyAsync(table => table.TableId == tableId.Value, cancellationToken))
+                    .AnyAsync(
+                        table => table.TableId == tableId.Value,
+                        cancellationToken))
             {
-                throw new KeyNotFoundException("Table not found.");
+                throw new KeyNotFoundException("Restaurant table was not found.");
             }
 
             var requestedItems = cart.CartItems
                 .GroupBy(item => item.ProductId)
-                .Select(group => new
-                {
-                    ProductId = group.Key,
-                    Quantity = group.Sum(item => item.Quantity)
-                })
+                .Select(group => new RequestedOrderItem(
+                    group.Key,
+                    group.Sum(item => item.Quantity)))
                 .ToList();
-
             if (requestedItems.Any(item => item.Quantity <= 0))
             {
-                throw new InvalidOperationException("Cart contains an invalid quantity.");
+                throw new InvalidOperationException(
+                    "Cart contains an invalid quantity.");
             }
 
-            var productIds = requestedItems.Select(item => item.ProductId).ToList();
-            var products = await Set<Product>()
-                .AsNoTracking()
-                .Where(product => productIds.Contains(product.ProductId))
-                .ToDictionaryAsync(product => product.ProductId, cancellationToken);
-
+            var productIds = requestedItems
+                .Select(item => item.ProductId)
+                .ToList();
+            var products = cart.CartItems
+                .Select(item => item.Product)
+                .GroupBy(product => product.ProductId)
+                .ToDictionary(group => group.Key, group => group.First());
             if (products.Count != productIds.Count)
             {
-                throw new KeyNotFoundException("One or more products no longer exist.");
+                throw new KeyNotFoundException(
+                    "One or more products no longer exist.");
             }
 
+            var now = UtcNow();
             foreach (var item in requestedItems)
             {
                 var product = products[item.ProductId];
@@ -180,40 +197,18 @@ public sealed class OrderService : IOrderService
                         $"Insufficient stock for product '{product.Name}'.");
                 }
 
-                var updatedRows = await Set<Product>()
-                    .Where(current =>
-                        current.ProductId == item.ProductId &&
-                        current.IsAvailable &&
-                        current.UnitInStock >= item.Quantity)
-                    .ExecuteUpdateAsync(
-                        setters => setters
-                            .SetProperty(
-                                current => current.UnitInStock,
-                                current => current.UnitInStock - item.Quantity)
-                            .SetProperty(
-                                current => current.IsAvailable,
-                                current => current.UnitInStock - item.Quantity > 0)
-                            .SetProperty(current => current.UpdatedAt, DateTime.UtcNow),
-                        cancellationToken);
-
-                if (updatedRows != 1)
-                {
-                    throw new InvalidOperationException(
-                        $"Insufficient stock for product '{product.Name}'.");
-                }
+                product.UnitInStock -= item.Quantity;
+                product.IsAvailable = product.UnitInStock > 0;
+                product.UpdatedAt = now;
             }
 
-            var pendingStatusId = await GetPendingOrderStatusIdAsync(cancellationToken);
+            var pendingStatus = await GetPendingOrderStatusAsync(cancellationToken);
             var subtotal = requestedItems.Sum(
                 item => CurrentPrice(products[item.ProductId]) * item.Quantity);
             var orderType = request.OrderType.Trim();
-            var serviceFee = string.Equals(
-                orderType,
-                "Takeaway",
-                StringComparison.OrdinalIgnoreCase)
+            var serviceFee = IsTakeaway(orderType)
                 ? 0m
                 : Math.Round(subtotal * 0.05m, 0);
-            var now = DateTime.UtcNow;
 
             var order = new Order
             {
@@ -221,8 +216,11 @@ public sealed class OrderService : IOrderService
                 TableId = tableId,
                 ReservationId = request.ReservationId,
                 OrderType = orderType,
-                Note = request.Note,
-                OrderStatusId = pendingStatusId,
+                Note = string.IsNullOrWhiteSpace(request.Note)
+                    ? null
+                    : request.Note.Trim(),
+                OrderStatusId = pendingStatus.OrderStatusId,
+                OrderStatus = pendingStatus,
                 TotalPrice = subtotal + serviceFee,
                 OrderDate = now,
                 CreatedAt = now
@@ -235,21 +233,25 @@ public sealed class OrderService : IOrderService
                 order.OrderDetails.Add(new OrderDetail
                 {
                     ProductId = product.ProductId,
+                    Product = product,
                     Quantity = item.Quantity,
                     UnitPrice = unitPrice,
                     Subtotal = unitPrice * item.Quantity
                 });
             }
 
-            var requiresOnlinePayment = RequiresOnlinePayment(paymentMethod.MethodName);
+            var requiresOnlinePayment = RequiresOnlinePayment(
+                paymentMethod.MethodName);
             order.Payments.Add(new Payment
             {
                 MethodId = paymentMethod.MethodId,
                 PaymentAmount = order.TotalPrice,
-                PaymentStatus = requiresOnlinePayment ? "Pending" : "Paid",
+                PaymentStatus = requiresOnlinePayment
+                    ? PendingPaymentStatus
+                    : PaidPaymentStatus,
                 TransactionCode = requiresOnlinePayment
                     ? null
-                    : $"DEMO-{now:yyyyMMddHHmmssfff}",
+                    : $"POS-{now:yyyyMMddHHmmssfff}",
                 PaymentDate = now,
                 PaidAt = requiresOnlinePayment ? null : now
             });
@@ -258,10 +260,20 @@ public sealed class OrderService : IOrderService
             Set<CartItem>().RemoveRange(cart.CartItems.ToList());
             cart.CartItems.Clear();
             cart.UpdatedAt = now;
-            AddOrderNotification(
+
+            await _notificationService.QueueForUserAsync(
                 customerUserId,
-                "Order placed",
-                "Your order has been created successfully.");
+                new NotificationDraft(
+                    "Order created",
+                    "Your order has been created and is waiting for the store to process it.",
+                    NotificationTypes.OrderCreated),
+                cancellationToken);
+            await _notificationService.QueueForActiveStaffAsync(
+                new NotificationDraft(
+                    "New order",
+                    $"A new {orderType} order totaling {order.TotalPrice:N0} VND is waiting for processing.",
+                    NotificationTypes.OrderCreated),
+                cancellationToken);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             orderId = order.OrderId;
@@ -272,59 +284,133 @@ public sealed class OrderService : IOrderService
             throw;
         }
 
-        return await GetOrderAsync(orderId, cancellationToken);
+        return await GetMineByIdAsync(
+            customerUserId,
+            orderId,
+            cancellationToken);
     }
 
-    public async Task<OrderDto> UpdateStatusAsync(
+    public async Task<IReadOnlyList<OrderDto>> GetForStoreAsync(
+        int operatorUserId,
+        int? statusId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(operatorUserId, nameof(operatorUserId));
+        ValidateOptionalStatusId(statusId);
+        await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+
+        var query = OrderQuery(trackChanges: false);
+        if (statusId.HasValue)
+        {
+            query = query.Where(order => order.OrderStatusId == statusId.Value);
+        }
+
+        var orders = await query
+            .OrderByDescending(order => order.OrderDate)
+            .ThenByDescending(order => order.OrderId)
+            .ToListAsync(cancellationToken);
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        return orders.Select(order => ToOrderDto(order, statuses)).ToList();
+    }
+
+    public async Task<OrderDto> GetForStoreByIdAsync(
+        int operatorUserId,
+        int orderId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(operatorUserId, nameof(operatorUserId));
+        ValidateOrderId(orderId);
+        await EnsureActiveStoreOperatorAsync(operatorUserId, cancellationToken);
+
+        var order = await OrderQuery(trackChanges: false)
+            .SingleOrDefaultAsync(
+                current => current.OrderId == orderId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Order was not found.");
+        var statuses = await GetOrderStatusesAsync(cancellationToken);
+        return ToOrderDto(order, statuses);
+    }
+
+    public async Task<OrderDto> UpdateStatusByStoreAsync(
+        int operatorUserId,
         int orderId,
         OrderStatusUpdateRequest request,
         CancellationToken cancellationToken = default)
     {
+        ValidateUserId(operatorUserId, nameof(operatorUserId));
         ValidateOrderId(orderId);
-        await _unitOfWork.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        if (request.OrderStatusId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request.OrderStatusId),
+                "Order status id must be greater than zero.");
+        }
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
 
         try
         {
+            await EnsureActiveStoreOperatorAsync(
+                operatorUserId,
+                cancellationToken);
             var targetStatus = await Set<OrderStatus>()
-                .FirstOrDefaultAsync(
+                .SingleOrDefaultAsync(
                     status => status.OrderStatusId == request.OrderStatusId,
                     cancellationToken)
-                ?? throw new KeyNotFoundException("Order status not found.");
-
+                ?? throw new KeyNotFoundException("Order status was not found.");
             var order = await OrderQuery(trackChanges: true)
-                .FirstOrDefaultAsync(current => current.OrderId == orderId, cancellationToken)
-                ?? throw new KeyNotFoundException("Order not found.");
+                .SingleOrDefaultAsync(
+                    current => current.OrderId == orderId,
+                    cancellationToken)
+                ?? throw new KeyNotFoundException("Order was not found.");
 
             if (order.OrderStatusId != targetStatus.OrderStatusId)
             {
-                if (!IsTransitionAllowed(
-                        order.OrderStatus.OrderStatusName,
-                        targetStatus.OrderStatusName))
+                EnsureAllowedTransition(
+                    order.OrderStatus.OrderStatusName,
+                    targetStatus.OrderStatusName);
+                var targetState = ClassifyOrderStatus(
+                    targetStatus.OrderStatusName);
+                if (targetState != OrderState.Cancelled &&
+                    order.Payments.Any(payment =>
+                        IsPendingPaymentStatus(payment.PaymentStatus)))
                 {
                     throw new InvalidOperationException(
-                        $"Cannot change order status from '{order.OrderStatus.OrderStatusName}' " +
-                        $"to '{targetStatus.OrderStatusName}'.");
+                        "An order awaiting online payment cannot be processed.");
                 }
 
-                if (GetStatusKind(targetStatus.OrderStatusName) == OrderStatusKind.Cancelled)
+                if (targetState == OrderState.Cancelled)
                 {
                     RestoreStock(order);
                     foreach (var payment in order.Payments.Where(
-                                 current => IsPendingPaymentStatus(current.PaymentStatus)))
+                                 current => IsPendingPaymentStatus(
+                                     current.PaymentStatus)))
                     {
-                        payment.PaymentStatus = "Cancelled";
+                        payment.PaymentStatus = CancelledPaymentStatus;
                     }
                 }
 
                 order.OrderStatusId = targetStatus.OrderStatusId;
                 order.OrderStatus = targetStatus;
-                order.UpdatedAt = DateTime.UtcNow;
-                if (order.CustomerUserId.HasValue)
+                order.StaffUserId = operatorUserId;
+                order.UpdatedAt = UtcNow();
+
+                if (order.CustomerUserId.HasValue &&
+                    order.CustomerUser?.IsActive == true)
                 {
-                    AddOrderNotification(
+                    await _notificationService.QueueForUserAsync(
                         order.CustomerUserId.Value,
-                        "Order updated",
-                        $"Order #{order.OrderId} is now {targetStatus.OrderStatusName}.");
+                        new NotificationDraft(
+                            targetState == OrderState.Cancelled
+                                ? "Order cancelled"
+                                : "Order status updated",
+                            $"Order #{order.OrderId} is now {targetStatus.OrderStatusName}.",
+                            targetState == OrderState.Cancelled
+                                ? NotificationTypes.OrderCancelled
+                                : NotificationTypes.OrderStatusChanged),
+                        cancellationToken);
                 }
             }
 
@@ -336,7 +422,10 @@ public sealed class OrderService : IOrderService
             throw;
         }
 
-        return await GetOrderAsync(orderId, cancellationToken);
+        return await GetForStoreByIdAsync(
+            operatorUserId,
+            orderId,
+            cancellationToken);
     }
 
     private DbSet<T> Set<T>() where T : class
@@ -346,9 +435,11 @@ public sealed class OrderService : IOrderService
     {
         IQueryable<Order> query = Set<Order>()
             .Include(order => order.CustomerUser)
+            .Include(order => order.StaffUser)
             .Include(order => order.OrderStatus)
             .Include(order => order.OrderDetails)
             .ThenInclude(detail => detail.Product)
+            .Include(order => order.Table)
             .Include(order => order.Payments)
             .ThenInclude(payment => payment.Method);
 
@@ -361,7 +452,9 @@ public sealed class OrderService : IOrderService
         => Set<Cart>()
             .Include(cart => cart.CartItems)
             .ThenInclude(item => item.Product)
-            .FirstOrDefaultAsync(cart => cart.UserId == userId, cancellationToken);
+            .SingleOrDefaultAsync(
+                cart => cart.UserId == userId,
+                cancellationToken);
 
     private async Task<Reservation?> GetValidatedReservationAsync(
         int customerUserId,
@@ -375,18 +468,26 @@ public sealed class OrderService : IOrderService
 
         var reservation = await Set<Reservation>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(
+            .Include(current => current.Status)
+            .SingleOrDefaultAsync(
                 current => current.ReservationId == request.ReservationId.Value,
                 cancellationToken)
-            ?? throw new KeyNotFoundException("Reservation not found.");
+            ?? throw new KeyNotFoundException("Reservation was not found.");
 
-        if (reservation.UserId.HasValue && reservation.UserId != customerUserId)
+        if (reservation.UserId != customerUserId)
         {
             throw new InvalidOperationException(
-                "Reservation does not belong to this user.");
+                "Reservation does not belong to the authenticated customer.");
         }
 
-        if (request.TableId.HasValue && request.TableId.Value != reservation.TableId)
+        if (IsTerminalReservationStatus(reservation.Status.StatusName))
+        {
+            throw new InvalidOperationException(
+                "Orders cannot be created for a finished reservation.");
+        }
+
+        if (request.TableId.HasValue &&
+            request.TableId.Value != reservation.TableId)
         {
             throw new InvalidOperationException(
                 "Table does not match the reservation.");
@@ -395,27 +496,17 @@ public sealed class OrderService : IOrderService
         return reservation;
     }
 
-    private async Task EnsureUserExistsAsync(
-        int userId,
+    private async Task<OrderStatus> GetPendingOrderStatusAsync(
         CancellationToken cancellationToken)
     {
-        if (!await Set<User>()
-                .AsNoTracking()
-                .AnyAsync(user => user.UserId == userId, cancellationToken))
-        {
-            throw new KeyNotFoundException("User not found.");
-        }
-    }
-
-    private async Task<int> GetPendingOrderStatusIdAsync(
-        CancellationToken cancellationToken)
-    {
-        var statuses = await GetOrderStatusesAsync(cancellationToken);
-        var pending = statuses.FirstOrDefault(status =>
-            GetStatusKind(status.OrderStatusName) == OrderStatusKind.Pending);
-        return pending?.OrderStatusId
+        var statuses = await Set<OrderStatus>()
+            .OrderBy(status => status.OrderStatusId)
+            .ToListAsync(cancellationToken);
+        return statuses.FirstOrDefault(
+                status => ClassifyOrderStatus(status.OrderStatusName) ==
+                    OrderState.Pending)
             ?? throw new InvalidOperationException(
-                "Pending order status is not configured.");
+                "A pending order status is not configured.");
     }
 
     private async Task<IReadOnlyList<OrderStatus>> GetOrderStatusesAsync(
@@ -425,42 +516,211 @@ public sealed class OrderService : IOrderService
             .OrderBy(status => status.OrderStatusId)
             .ToListAsync(cancellationToken);
 
-    private void AddOrderNotification(
-        int userId,
-        string title,
-        string content)
-        => Set<Notification>().Add(new Notification
-        {
-            UserId = userId,
-            Title = title,
-            Content = content,
-            Type = "Order",
-            IsRead = false,
-            CreatedAt = DateTime.UtcNow
-        });
-
-    private static void RestoreStock(Order order)
+    private async Task EnsureActiveCustomerAsync(
+        int customerUserId,
+        CancellationToken cancellationToken)
     {
+        var isActiveCustomer = await Set<User>()
+            .AsNoTracking()
+            .AnyAsync(
+                user =>
+                    user.UserId == customerUserId &&
+                    user.IsActive &&
+                    user.Role.RoleName == CustomerRoleName,
+                cancellationToken);
+        if (!isActiveCustomer)
+        {
+            throw new UnauthorizedAccessException(
+                "The authenticated customer account is not active or valid.");
+        }
+    }
+
+    private async Task EnsureActiveStoreOperatorAsync(
+        int operatorUserId,
+        CancellationToken cancellationToken)
+    {
+        var isActiveOperator = await Set<User>()
+            .AsNoTracking()
+            .AnyAsync(
+                user =>
+                    user.UserId == operatorUserId &&
+                    user.IsActive &&
+                    (user.Role.RoleName == StaffRoleName ||
+                     user.Role.RoleName == AdminRoleName),
+                cancellationToken);
+        if (!isActiveOperator)
+        {
+            throw new UnauthorizedAccessException(
+                "The authenticated store operator account is not active or valid.");
+        }
+    }
+
+    private void RestoreStock(Order order)
+    {
+        var now = UtcNow();
         foreach (var detail in order.OrderDetails)
         {
             detail.Product.UnitInStock += detail.Quantity;
             detail.Product.IsAvailable = true;
-            detail.Product.UpdatedAt = DateTime.UtcNow;
+            detail.Product.UpdatedAt = now;
         }
+    }
+
+    private static void EnsureAllowedTransition(
+        string currentStatusName,
+        string targetStatusName)
+    {
+        if (!IsAllowedTransition(currentStatusName, targetStatusName))
+        {
+            throw new InvalidOperationException(
+                $"Order status cannot change from '{currentStatusName}' to '{targetStatusName}'.");
+        }
+    }
+
+    private static bool IsAllowedTransition(
+        string currentStatusName,
+        string targetStatusName)
+    {
+        var current = ClassifyOrderStatus(currentStatusName);
+        var target = ClassifyOrderStatus(targetStatusName);
+        return target == OrderState.Cancelled &&
+                current is OrderState.Pending or OrderState.Processing or OrderState.Ready
+            || current == OrderState.Pending && target == OrderState.Processing
+            || current == OrderState.Processing &&
+                target is OrderState.Ready or OrderState.Completed
+            || current == OrderState.Ready && target == OrderState.Completed;
+    }
+
+    private static OrderState ClassifyOrderStatus(string statusName)
+    {
+        var normalized = NormalizeText(statusName);
+        if (ContainsAny(normalized, "cancel", "huy"))
+        {
+            return OrderState.Cancelled;
+        }
+
+        if (ContainsAny(normalized, "complete", "hoan thanh"))
+        {
+            return OrderState.Completed;
+        }
+
+        if (ContainsAny(normalized, "ready", "san sang"))
+        {
+            return OrderState.Ready;
+        }
+
+        if (ContainsAny(
+                normalized,
+                "process",
+                "pha che",
+                "chuan bi",
+                "dang lam"))
+        {
+            return OrderState.Processing;
+        }
+
+        if (ContainsAny(normalized, "pending", "cho xu ly", "dang cho"))
+        {
+            return OrderState.Pending;
+        }
+
+        return OrderState.Unknown;
+    }
+
+    private static bool IsTerminalReservationStatus(string statusName)
+    {
+        var normalized = NormalizeText(statusName);
+        return ContainsAny(
+            normalized,
+            "cancel",
+            "huy",
+            "complete",
+            "hoan thanh",
+            "expired",
+            "het han",
+            "no show",
+            "khong den");
+    }
+
+    private static bool IsPendingPaymentStatus(string statusName)
+    {
+        var normalized = NormalizeText(statusName);
+        return ContainsAny(normalized, "pending", "dang cho", "cho thanh toan");
+    }
+
+    private static bool IsCashPayment(string methodName)
+        => ContainsAny(NormalizeText(methodName), "cash", "tien mat");
+
+    private static bool RequiresOnlinePayment(string methodName)
+    {
+        var normalized = NormalizeText(methodName);
+        return ContainsAny(
+            normalized,
+            "transfer",
+            "bank",
+            "online",
+            "qr",
+            "chuyen khoan");
+    }
+
+    private static bool IsTakeaway(string orderType)
+    {
+        var normalized = NormalizeText(orderType).Replace(" ", string.Empty);
+        return normalized is "takeaway" or "mangdi";
+    }
+
+    private static bool ContainsAny(string value, params string[] candidates)
+        => candidates.Any(candidate =>
+            value.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+
+    private static string NormalizeText(string value)
+    {
+        var decomposed = value.Trim()
+            .Replace('Đ', 'D')
+            .Replace('đ', 'd')
+            .Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (var character in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) !=
+                UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
     private static void ValidateCheckout(CheckoutRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
         if (string.IsNullOrWhiteSpace(request.OrderType))
         {
-            throw new ArgumentException("Order type is required.", nameof(request.OrderType));
+            throw new ArgumentException(
+                "Order type is required.",
+                nameof(request));
         }
 
         if (request.OrderType.Trim().Length > 50)
         {
             throw new ArgumentException(
                 "Order type must not exceed 50 characters.",
-                nameof(request.OrderType));
+                nameof(request));
+        }
+
+        if (request.TableId is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request.TableId),
+                "Table id must be greater than zero.");
+        }
+
+        if (request.ReservationId is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request.ReservationId),
+                "Reservation id must be greater than zero.");
         }
 
         if (request.PaymentMethodId <= 0)
@@ -468,6 +728,16 @@ public sealed class OrderService : IOrderService
             throw new ArgumentOutOfRangeException(
                 nameof(request.PaymentMethodId),
                 "Payment method id must be greater than zero.");
+        }
+    }
+
+    private static void ValidateOptionalStatusId(int? statusId)
+    {
+        if (statusId is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(statusId),
+                "Status id must be greater than zero.");
         }
     }
 
@@ -481,94 +751,21 @@ public sealed class OrderService : IOrderService
         }
     }
 
-    private static void ValidateUserId(int userId)
+    private static void ValidateUserId(int userId, string parameterName)
     {
         if (userId <= 0)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(userId),
+                parameterName,
                 "User id must be greater than zero.");
         }
     }
 
+    private DateTime UtcNow()
+        => _timeProvider.GetUtcNow().UtcDateTime;
+
     private static decimal CurrentPrice(Product product)
         => product.DiscountPrice ?? product.Price;
-
-    private static bool RequiresOnlinePayment(string methodName)
-    {
-        var normalized = NormalizeName(methodName);
-        return normalized.Contains("transfer", StringComparison.Ordinal)
-            || normalized.Contains("bank", StringComparison.Ordinal)
-            || normalized.Contains("online", StringComparison.Ordinal)
-            || normalized.Contains("qr", StringComparison.Ordinal)
-            || normalized.Contains("chuyen", StringComparison.Ordinal);
-    }
-
-    private static bool IsPendingPaymentStatus(string statusName)
-        => NormalizeName(statusName).Contains("pending", StringComparison.Ordinal)
-            || NormalizeName(statusName).Contains("cho", StringComparison.Ordinal);
-
-    private static bool IsTransitionAllowed(string currentName, string targetName)
-    {
-        var current = GetStatusKind(currentName);
-        var target = GetStatusKind(targetName);
-        return current switch
-        {
-            OrderStatusKind.Pending => target is
-                OrderStatusKind.Processing or OrderStatusKind.Cancelled,
-            OrderStatusKind.Processing => target is
-                OrderStatusKind.Completed or OrderStatusKind.Cancelled,
-            _ => false
-        };
-    }
-
-    private static OrderStatusKind GetStatusKind(string statusName)
-    {
-        var normalized = NormalizeName(statusName);
-        if (normalized.Contains("cancel", StringComparison.Ordinal) ||
-            normalized.Contains("huy", StringComparison.Ordinal))
-        {
-            return OrderStatusKind.Cancelled;
-        }
-
-        if (normalized.Contains("complete", StringComparison.Ordinal) ||
-            normalized.Contains("hoan thanh", StringComparison.Ordinal))
-        {
-            return OrderStatusKind.Completed;
-        }
-
-        if (normalized.Contains("pending", StringComparison.Ordinal) ||
-            normalized.Contains("dang cho", StringComparison.Ordinal) ||
-            normalized.Contains("cho xu ly", StringComparison.Ordinal))
-        {
-            return OrderStatusKind.Pending;
-        }
-
-        if (normalized.Contains("processing", StringComparison.Ordinal) ||
-            normalized.Contains("pha che", StringComparison.Ordinal) ||
-            normalized.Contains("xu ly", StringComparison.Ordinal) ||
-            normalized.Contains("chuan bi", StringComparison.Ordinal))
-        {
-            return OrderStatusKind.Processing;
-        }
-
-        return OrderStatusKind.Unknown;
-    }
-
-    private static string NormalizeName(string value)
-    {
-        var decomposed = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(decomposed.Length);
-        foreach (var character in decomposed)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
-            {
-                builder.Append(character == '\u0111' ? 'd' : character);
-            }
-        }
-
-        return builder.ToString().Normalize(NormalizationForm.FormC);
-    }
 
     private static OrderDto ToOrderDto(
         Order order,
@@ -584,6 +781,7 @@ public sealed class OrderService : IOrderService
             order.OrderStatusId,
             order.OrderStatus.OrderStatusName,
             order.OrderDetails
+                .OrderBy(detail => detail.OrderDetailId)
                 .Select(detail => new OrderItemDto(
                     detail.OrderDetailId,
                     detail.ProductId,
@@ -593,6 +791,7 @@ public sealed class OrderService : IOrderService
                     detail.Subtotal))
                 .ToList(),
             order.Payments
+                .OrderBy(payment => payment.PaymentId)
                 .Select(payment => new PaymentDto(
                     payment.PaymentId,
                     payment.PaymentAmount,
@@ -603,8 +802,11 @@ public sealed class OrderService : IOrderService
                     payment.PaymentDate,
                     payment.PaidAt))
                 .ToList(),
+            order.TableId,
+            order.Table?.TableName,
+            order.ReservationId,
             statuses
-                .Where(status => IsTransitionAllowed(
+                .Where(status => IsAllowedTransition(
                     order.OrderStatus.OrderStatusName,
                     status.OrderStatusName))
                 .Select(status => new OrderStatusOptionDto(
@@ -612,11 +814,14 @@ public sealed class OrderService : IOrderService
                     status.OrderStatusName))
                 .ToList());
 
-    private enum OrderStatusKind
+    private sealed record RequestedOrderItem(int ProductId, int Quantity);
+
+    private enum OrderState
     {
         Unknown,
         Pending,
         Processing,
+        Ready,
         Completed,
         Cancelled
     }

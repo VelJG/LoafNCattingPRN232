@@ -15,11 +15,13 @@ public sealed record CartItemDto(
     string? Picture,
     decimal UnitPrice,
     int Quantity,
-    decimal LineTotal);
+    decimal LineTotal,
+    int AvailableStock,
+    bool IsAvailable);
 
 public sealed record AddCartItemRequest(
-    [property: Range(1, int.MaxValue)] int ProductId,
-    [property: Range(1, int.MaxValue)] int Quantity);
+    [param: Range(1, int.MaxValue)] int ProductId,
+    [param: Range(1, int.MaxValue)] int Quantity);
 
 public sealed record UpdateCartItemRequest(
-    [property: Range(0, int.MaxValue)] int Quantity);
+    [param: Range(0, int.MaxValue)] int Quantity);

@@ -467,6 +467,46 @@
   background: var(--app-bg);
 }
 
+.customer-v2 .cart-toast {
+  position: fixed;
+  top: 84px;
+  right: 24px;
+  z-index: 1200;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--app-ink);
+  border-radius: 14px;
+  background: var(--app-surface);
+  box-shadow: 0 14px 34px rgba(63, 26, 12, .22);
+  color: var(--app-ink);
+  font: 500 13px var(--font-mono);
+  animation: cart-toast-in 220ms ease;
+}
+.customer-v2 .cart-toast > svg:first-child { flex: none; color: var(--app-accent); font-size: 20px; }
+.customer-v2 .cart-toast span { flex: 1; min-width: 0; }
+.customer-v2 .cart-toast button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+.customer-v2 .cart-toast button:hover { background: rgba(95, 43, 21, .08); color: var(--app-ink); }
+
+@keyframes cart-toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes menu-v2-shimmer { to { background-position-x: -240%; } }
 
 @media (max-width: 960px) {
@@ -673,10 +713,20 @@
   padding: 0;
   border: 0;
   outline: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   color: var(--app-ink);
   background: transparent;
   font: 400 13px var(--font-mono);
   cursor: pointer;
+}
+.customer-v2 select.reservation-v2-native-input {
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f2b15' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 14px;
 }
 .customer-v2 .reservation-v2-native-input:focus-visible {
   outline: 2px solid var(--app-accent);

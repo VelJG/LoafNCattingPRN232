@@ -4,21 +4,16 @@ namespace LoafNCatting.Application.Interfaces.Services;
 
 public interface IOrderService
 {
-    Task<IReadOnlyList<OrderDto>> GetOrdersAsync(
-        int? userId,
-        int? statusId,
+    Task<CheckoutOptionsDto> GetCheckoutOptionsAsync(
+        int customerUserId,
         CancellationToken cancellationToken = default);
 
-    Task<OrderDto> GetOrderAsync(
-        int orderId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<OrderDto>> GetOrdersForCustomerAsync(
+    Task<IReadOnlyList<OrderDto>> GetMineAsync(
         int customerUserId,
         int? statusId,
         CancellationToken cancellationToken = default);
 
-    Task<OrderDto> GetOrderForCustomerAsync(
+    Task<OrderDto> GetMineByIdAsync(
         int customerUserId,
         int orderId,
         CancellationToken cancellationToken = default);
@@ -28,7 +23,18 @@ public interface IOrderService
         CheckoutRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<OrderDto> UpdateStatusAsync(
+    Task<IReadOnlyList<OrderDto>> GetForStoreAsync(
+        int operatorUserId,
+        int? statusId,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderDto> GetForStoreByIdAsync(
+        int operatorUserId,
+        int orderId,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderDto> UpdateStatusByStoreAsync(
+        int operatorUserId,
         int orderId,
         OrderStatusUpdateRequest request,
         CancellationToken cancellationToken = default);
