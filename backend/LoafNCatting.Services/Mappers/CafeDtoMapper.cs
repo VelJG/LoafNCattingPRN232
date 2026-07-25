@@ -38,4 +38,14 @@ internal static class CafeDtoMapper
             cat.PlayfulnessRating,
             cat.Status.StatusName,
             mediaStorage.NormalizeStoredKey(cat.Picture));
+
+    public static StoreLocationDto ToStoreLocationDto(StoreLocation location)
+        => new(
+            location.StoreLocationId,
+            location.StoreName,
+            location.Address,
+            location.PhoneNumber,
+            location.OpeningHours,
+            location.Latitude,
+            location.Longitude);
 }

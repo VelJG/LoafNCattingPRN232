@@ -30,10 +30,12 @@ export interface AdminProductInput {
 export interface CatalogRepository {
   listCategories(): Promise<Category[]>
   listProducts(query?: ProductQuery): Promise<Product[]>
+  getProduct(productId: number): Promise<Product | null>
   createProduct(product: AdminProductInput): Promise<Product>
   updateProduct(productId: number, product: AdminProductInput): Promise<Product>
   deleteProduct(productId: number): Promise<void>
   listCats(): Promise<CatProfile[]>
+  getCat(catId: number): Promise<CatProfile | null>
   listAvailableTables(guests: number): Promise<CafeTable[]>
   getDashboard(): Promise<{ metrics: DashboardMetric[]; orders: RecentOrder[] }>
 }
@@ -86,6 +88,20 @@ const toProduct = (item: ApiProduct): Product => ({
   imageUrl: item.picture || fallbackProductImage,
 })
 
+const toCat = (item: ApiCat): CatProfile => ({
+  id: item.catId,
+  name: item.name,
+  breed: item.breed ?? 'Chưa cập nhật giống',
+  age: item.age ?? undefined,
+  gender: item.genderName ?? undefined,
+  status: item.statusName,
+  description: item.description ?? '',
+  friendliness: item.friendlinessRating ?? undefined,
+  playfulness: item.playfulnessRating ?? undefined,
+  cuteness: item.cutenessRating ?? undefined,
+  imageUrl: item.picture || fallbackCatImage,
+})
+
 const readJson = async <T>(path: string, init: RequestInit = {}) => {
   const response = await fetch(`${apiBaseUrl}${path}`, init)
   if (!response.ok) {
@@ -125,6 +141,15 @@ class ApiCatalogRepository implements CatalogRepository {
     return items.map(toProduct)
   }
 
+  async getProduct(productId: number) {
+    try {
+      return toProduct(await readJson<ApiProduct>(`/products/${productId}`))
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('404')) return null
+      throw error
+    }
+  }
+
   async createProduct(product: AdminProductInput) {
     const created = await writeAdminJson<ApiProduct>('/admin/products', {
       method: 'POST',
@@ -147,19 +172,16 @@ class ApiCatalogRepository implements CatalogRepository {
 
   async listCats() {
     const items = await readJson<ApiCat[]>('/cats')
-    return items.map((item) => ({
-      id: item.catId,
-      name: item.name,
-      breed: item.breed ?? 'Unknown breed',
-      age: item.age ?? undefined,
-      gender: item.genderName ?? undefined,
-      status: item.statusName,
-      description: item.description ?? '',
-      friendliness: item.friendlinessRating ?? undefined,
-      playfulness: item.playfulnessRating ?? undefined,
-      cuteness: item.cutenessRating ?? undefined,
-      imageUrl: item.picture || fallbackCatImage,
-    }))
+    return items.map(toCat)
+  }
+
+  async getCat(catId: number) {
+    try {
+      return toCat(await readJson<ApiCat>(`/cats/${catId}`))
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('404')) return null
+      throw error
+    }
   }
 
   async listAvailableTables(guests: number) {

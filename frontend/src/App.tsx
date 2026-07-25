@@ -26,6 +26,7 @@ import { CatDetailPage } from './pages/customer/CatDetailPage'
 import { ChatPage } from './pages/customer/ChatPage'
 import { LocationPage } from './pages/customer/LocationPage'
 import { MenuPage } from './pages/customer/MenuPage'
+import { ProductDetailPage } from './pages/customer/ProductDetailPage'
 import { CustomerOrdersPage } from './pages/customer/CustomerOrdersPage'
 import { NotificationsPage } from './pages/customer/NotificationsPage'
 import { ProfilePage } from './pages/customer/ProfilePage'
@@ -61,6 +62,7 @@ function App() {
       <Route element={<ProtectedRoute allowed={['Customer']} />}>
         <Route element={<CustomerLayout />}>
           <Route path="menu" element={<MenuPage />} />
+          <Route path="menu/:productId" element={<ProductDetailPage />} />
           <Route path="cats" element={<CatsPage />} />
           <Route path="cats/:catId" element={<CatDetailPage />} />
           <Route path="orders" element={<CustomerOrdersPage />} />
