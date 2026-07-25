@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using LoafNCatting.Application.Contracts;
 using LoafNCatting.Application.Interfaces.Services;
 using LoafNCatting.Caching.Extensions;
@@ -24,7 +25,11 @@ builder.Services.Replace(ServiceDescriptor.Scoped<
     INotificationRealtimePublisher,
     SignalRNotificationRealtimePublisher>());
 builder.Services.AddHostedService<ReservationLifecycleBackgroundService>();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    });
 
 var jwtSection = builder.Configuration.GetSection(JwtSettings.SectionName);
 var jwtSettings = jwtSection.Get<JwtSettings>()
