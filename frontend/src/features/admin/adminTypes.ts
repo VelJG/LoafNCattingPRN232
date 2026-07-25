@@ -21,6 +21,11 @@ export interface AdminPayment {
   paidAt: string | null
 }
 
+export interface OrderStatusOption {
+  orderStatusId: number
+  orderStatusName: string
+}
+
 export interface AdminOrder {
   orderId: number
   customerUserId: number | null
@@ -33,6 +38,7 @@ export interface AdminOrder {
   orderStatusName: string
   items: AdminOrderItem[]
   payments: AdminPayment[]
+  allowedStatusTransitions: OrderStatusOption[]
 }
 
 export interface StoreReservationTable {

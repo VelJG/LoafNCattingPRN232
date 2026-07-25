@@ -14,23 +14,20 @@ import type {
   AdminUserOptions,
   CreatedStaff,
   CreateStaffInput,
-  OperatorRole,
   ReservationTransition,
   StoreReservation,
 } from './adminTypes'
 
 export const listOrders = (token: string, signal?: AbortSignal) =>
-  requestJson<AdminOrder[]>('/orders', { token, signal })
+  requestJson<AdminOrder[]>('/store/orders', { token, signal })
 
 export const updateOrderStatus = (
   token: string,
-  role: OperatorRole,
   orderId: number,
   orderStatusId: number,
-) => requestJson<AdminOrder>(`/orders/${orderId}/status`, {
+) => requestJson<AdminOrder>(`/store/orders/${orderId}/status`, {
   method: 'PATCH',
   token,
-  headers: { 'X-Role': role },
   body: { orderStatusId },
 })
 

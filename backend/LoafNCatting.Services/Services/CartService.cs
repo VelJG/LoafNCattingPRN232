@@ -1,3 +1,4 @@
+using System.Data;
 using LoafNCatting.Application.DTOs.Carts;
 using LoafNCatting.Application.Interfaces.Repositories;
 using LoafNCatting.Application.Interfaces.Services;
@@ -8,14 +9,19 @@ namespace LoafNCatting.Services.Services;
 
 public sealed class CartService : ICartService
 {
+    private const string CustomerRoleName = "Customer";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMediaStorageService _mediaStorage;
+    private readonly TimeProvider _timeProvider;
 
     public CartService(
         IUnitOfWork unitOfWork,
+        TimeProvider timeProvider,
         IMediaStorageService? mediaStorage = null)
     {
         _unitOfWork = unitOfWork;
+        _timeProvider = timeProvider;
         _mediaStorage = mediaStorage ?? PassThroughMediaStorageService.Instance;
     }
 
@@ -23,7 +29,7 @@ public sealed class CartService : ICartService
         int userId,
         CancellationToken cancellationToken = default)
     {
-        await EnsureUserExistsAsync(userId, cancellationToken);
+        await EnsureActiveCustomerAsync(userId, cancellationToken);
         var cart = await FindCartAsync(userId, trackChanges: false, cancellationToken);
         return cart is null ? EmptyCart(userId) : ToCartDto(cart, _mediaStorage);
     }
@@ -34,43 +40,57 @@ public sealed class CartService : ICartService
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        if (request.Quantity <= 0)
+        ValidateProductId(request.ProductId);
+        ValidatePositiveQuantity(request.Quantity);
+
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
         {
-            throw new ArgumentOutOfRangeException(nameof(request.Quantity), "Quantity must be greater than zero.");
-        }
+            await EnsureActiveCustomerAsync(userId, cancellationToken);
+            var product = await GetOrderableProductAsync(
+                request.ProductId,
+                cancellationToken);
+            var cart = await FindCartAsync(
+                userId,
+                trackChanges: true,
+                cancellationToken);
 
-        await EnsureUserExistsAsync(userId, cancellationToken);
-        var product = await Set<Product>()
-            .FirstOrDefaultAsync(item => item.ProductId == request.ProductId, cancellationToken)
-            ?? throw new KeyNotFoundException("Product not found.");
-
-        EnsureProductCanBeOrdered(product);
-
-        var cart = await FindCartAsync(userId, trackChanges: true, cancellationToken);
-        if (cart is null)
-        {
-            cart = new Cart
+            if (cart is null)
             {
-                UserId = userId,
-                CreatedAt = DateTime.UtcNow
-            };
-            Set<Cart>().Add(cart);
-        }
+                cart = new Cart
+                {
+                    UserId = userId,
+                    CreatedAt = UtcNow()
+                };
+                Set<Cart>().Add(cart);
+            }
 
-        var item = cart.CartItems.FirstOrDefault(current => current.ProductId == request.ProductId);
-        var quantity = Math.Min((item?.Quantity ?? 0) + request.Quantity, product.UnitInStock);
-        if (item is null)
-        {
-            cart.CartItems.Add(CreateCartItem(product, quantity));
-        }
-        else
-        {
-            UpdateCartItem(item, product, quantity);
-        }
+            var item = cart.CartItems.FirstOrDefault(
+                current => current.ProductId == request.ProductId);
+            var requestedQuantity = (item?.Quantity ?? 0) + request.Quantity;
+            EnsureQuantityAvailable(product, requestedQuantity);
 
-        Touch(cart);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return ToCartDto(cart, _mediaStorage);
+            if (item is null)
+            {
+                cart.CartItems.Add(CreateCartItem(product, requestedQuantity));
+            }
+            else
+            {
+                UpdateCartItem(item, product, requestedQuantity);
+            }
+
+            Touch(cart);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return ToCartDto(cart, _mediaStorage);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task<CartDto> UpdateItemAsync(
@@ -80,49 +100,75 @@ public sealed class CartService : ICartService
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        await EnsureUserExistsAsync(userId, cancellationToken);
-
-        var cart = await FindCartAsync(userId, trackChanges: true, cancellationToken);
-        if (cart is null)
+        ValidateProductId(productId);
+        if (request.Quantity < 0)
         {
-            return request.Quantity <= 0
-                ? EmptyCart(userId)
-                : await AddItemAsync(
-                    userId,
-                    new AddCartItemRequest(productId, request.Quantity),
-                    cancellationToken);
+            throw new ArgumentOutOfRangeException(
+                nameof(request.Quantity),
+                "Quantity cannot be negative.");
         }
 
-        var item = cart.CartItems.FirstOrDefault(current => current.ProductId == productId);
-        if (request.Quantity <= 0)
+        await _unitOfWork.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        try
         {
-            if (item is not null)
+            await EnsureActiveCustomerAsync(userId, cancellationToken);
+            var cart = await FindCartAsync(
+                userId,
+                trackChanges: true,
+                cancellationToken);
+
+            if (cart is null)
             {
-                RemoveItem(cart, item);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                if (request.Quantity == 0)
+                {
+                    await _unitOfWork.CommitTransactionAsync(cancellationToken);
+                    return EmptyCart(userId);
+                }
+
+                cart = new Cart
+                {
+                    UserId = userId,
+                    CreatedAt = UtcNow()
+                };
+                Set<Cart>().Add(cart);
             }
 
+            var item = cart.CartItems.FirstOrDefault(
+                current => current.ProductId == productId);
+            if (request.Quantity == 0)
+            {
+                if (item is not null)
+                {
+                    RemoveItem(cart, item);
+                }
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+                return ToCartDto(cart, _mediaStorage);
+            }
+
+            var product = await GetOrderableProductAsync(productId, cancellationToken);
+            EnsureQuantityAvailable(product, request.Quantity);
+            if (item is null)
+            {
+                cart.CartItems.Add(CreateCartItem(product, request.Quantity));
+            }
+            else
+            {
+                UpdateCartItem(item, product, request.Quantity);
+            }
+
+            Touch(cart);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return ToCartDto(cart, _mediaStorage);
         }
-
-        var product = await Set<Product>()
-            .FirstOrDefaultAsync(current => current.ProductId == productId, cancellationToken)
-            ?? throw new KeyNotFoundException("Product not found.");
-
-        EnsureProductCanBeOrdered(product);
-        var quantity = Math.Min(request.Quantity, product.UnitInStock);
-        if (item is null)
+        catch
         {
-            cart.CartItems.Add(CreateCartItem(product, quantity));
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
         }
-        else
-        {
-            UpdateCartItem(item, product, quantity);
-        }
-
-        Touch(cart);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-        return ToCartDto(cart, _mediaStorage);
     }
 
     public async Task<CartDto> RemoveItemAsync(
@@ -130,8 +176,8 @@ public sealed class CartService : ICartService
         int productId,
         CancellationToken cancellationToken = default)
     {
-        ValidateUserId(userId);
-        await EnsureUserExistsAsync(userId, cancellationToken);
+        ValidateProductId(productId);
+        await EnsureActiveCustomerAsync(userId, cancellationToken);
 
         var cart = await FindCartAsync(userId, trackChanges: true, cancellationToken);
         if (cart is null)
@@ -139,7 +185,8 @@ public sealed class CartService : ICartService
             return EmptyCart(userId);
         }
 
-        var item = cart.CartItems.FirstOrDefault(current => current.ProductId == productId);
+        var item = cart.CartItems.FirstOrDefault(
+            current => current.ProductId == productId);
         if (item is not null)
         {
             RemoveItem(cart, item);
@@ -153,8 +200,7 @@ public sealed class CartService : ICartService
         int userId,
         CancellationToken cancellationToken = default)
     {
-        ValidateUserId(userId);
-        await EnsureUserExistsAsync(userId, cancellationToken);
+        await EnsureActiveCustomerAsync(userId, cancellationToken);
 
         var cart = await FindCartAsync(userId, trackChanges: true, cancellationToken);
         if (cart is null)
@@ -186,18 +232,48 @@ public sealed class CartService : ICartService
             query = query.AsNoTracking();
         }
 
-        return query.FirstOrDefaultAsync(cart => cart.UserId == userId, cancellationToken);
+        return query.FirstOrDefaultAsync(
+            cart => cart.UserId == userId,
+            cancellationToken);
     }
 
-    private async Task EnsureUserExistsAsync(
+    private async Task EnsureActiveCustomerAsync(
         int userId,
         CancellationToken cancellationToken)
     {
         ValidateUserId(userId);
-        if (!await Set<User>().AsNoTracking().AnyAsync(user => user.UserId == userId, cancellationToken))
+        var isActiveCustomer = await Set<User>()
+            .AsNoTracking()
+            .AnyAsync(
+                user =>
+                    user.UserId == userId &&
+                    user.IsActive &&
+                    user.Role.RoleName == CustomerRoleName,
+                cancellationToken);
+        if (!isActiveCustomer)
         {
-            throw new KeyNotFoundException("User not found.");
+            throw new UnauthorizedAccessException(
+                "The authenticated customer account is not active or valid.");
         }
+    }
+
+    private async Task<Product> GetOrderableProductAsync(
+        int productId,
+        CancellationToken cancellationToken)
+    {
+        var product = await Set<Product>()
+            .FirstOrDefaultAsync(
+                current => current.ProductId == productId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Product not found.");
+
+        if (!product.IsAvailable || product.UnitInStock <= 0)
+        {
+            throw new InvalidOperationException(
+                "Product is unavailable or out of stock.");
+        }
+
+        return product;
     }
 
     private void RemoveItem(Cart cart, CartItem item)
@@ -207,29 +283,50 @@ public sealed class CartService : ICartService
         Touch(cart);
     }
 
-    private static CartItem CreateCartItem(Product product, int quantity)
+    private CartItem CreateCartItem(Product product, int quantity)
         => new()
         {
             ProductId = product.ProductId,
             Product = product,
             Quantity = quantity,
             UnitPrice = CurrentPrice(product),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = UtcNow()
         };
 
-    private static void UpdateCartItem(CartItem item, Product product, int quantity)
+    private void UpdateCartItem(CartItem item, Product product, int quantity)
     {
         item.Product = product;
         item.Quantity = quantity;
         item.UnitPrice = CurrentPrice(product);
-        item.UpdatedAt = DateTime.UtcNow;
+        item.UpdatedAt = UtcNow();
     }
 
-    private static void EnsureProductCanBeOrdered(Product product)
+    private static void EnsureQuantityAvailable(Product product, int quantity)
     {
-        if (!product.IsAvailable || product.UnitInStock <= 0)
+        if (quantity > product.UnitInStock)
         {
-            throw new InvalidOperationException("Product is unavailable or out of stock.");
+            throw new InvalidOperationException(
+                $"Only {product.UnitInStock} unit(s) of '{product.Name}' are available.");
+        }
+    }
+
+    private static void ValidatePositiveQuantity(int quantity)
+    {
+        if (quantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                "Quantity must be greater than zero.");
+        }
+    }
+
+    private static void ValidateProductId(int productId)
+    {
+        if (productId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(productId),
+                "Product id must be greater than zero.");
         }
     }
 
@@ -237,12 +334,17 @@ public sealed class CartService : ICartService
     {
         if (userId <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(userId), "User id must be greater than zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(userId),
+                "User id must be greater than zero.");
         }
     }
 
-    private static void Touch(Cart cart)
-        => cart.UpdatedAt = DateTime.UtcNow;
+    private void Touch(Cart cart)
+        => cart.UpdatedAt = UtcNow();
+
+    private DateTime UtcNow()
+        => _timeProvider.GetUtcNow().UtcDateTime;
 
     private static decimal CurrentPrice(Product product)
         => product.DiscountPrice ?? product.Price;
@@ -250,7 +352,9 @@ public sealed class CartService : ICartService
     private static CartDto EmptyCart(int userId)
         => new(0, userId, Array.Empty<CartItemDto>(), 0m);
 
-    private static CartDto ToCartDto(Cart cart, IMediaStorageService mediaStorage)
+    private static CartDto ToCartDto(
+        Cart cart,
+        IMediaStorageService mediaStorage)
     {
         var items = cart.CartItems
             .OrderBy(item => item.CreatedAt)
@@ -261,9 +365,15 @@ public sealed class CartService : ICartService
                 mediaStorage.ResolveDisplayUrl(item.Product.Picture),
                 item.UnitPrice,
                 item.Quantity,
-                item.UnitPrice * item.Quantity))
+                item.UnitPrice * item.Quantity,
+                item.Product.UnitInStock,
+                item.Product.IsAvailable))
             .ToList();
 
-        return new CartDto(cart.CartId, cart.UserId, items, items.Sum(item => item.LineTotal));
+        return new CartDto(
+            cart.CartId,
+            cart.UserId,
+            items,
+            items.Sum(item => item.LineTotal));
     }
 }

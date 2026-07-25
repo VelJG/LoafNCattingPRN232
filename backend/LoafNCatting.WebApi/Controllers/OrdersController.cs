@@ -1,10 +1,14 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using LoafNCatting.Application.DTOs.Orders;
 using LoafNCatting.Application.Interfaces.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LoafNCatting.WebApi.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Customer")]
 [Route("api/orders")]
 public sealed class OrdersController : ApiControllerBase
 {
@@ -15,49 +19,77 @@ public sealed class OrdersController : ApiControllerBase
         _orderService = orderService;
     }
 
-    [HttpGet]
-    public Task<IActionResult> GetOrders(
-        [FromQuery] int? userId,
+    [HttpGet("checkout-options")]
+    public Task<IActionResult> GetCheckoutOptions(CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _orderService.GetCheckoutOptionsAsync(
+            customerUserId,
+            cancellationToken));
+    }
+
+    [HttpGet("mine")]
+    public Task<IActionResult> GetMine(
         [FromQuery] int? statusId,
         CancellationToken cancellationToken)
-        => HandleAsync(() => _orderService.GetOrdersAsync(
-            userId,
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _orderService.GetMineAsync(
+            customerUserId,
             statusId,
             cancellationToken));
+    }
 
     [HttpGet("{orderId:int}")]
-    public Task<IActionResult> GetOrder(
+    public Task<IActionResult> GetMineById(
         int orderId,
         CancellationToken cancellationToken)
-        => HandleAsync(() => _orderService.GetOrderAsync(orderId, cancellationToken));
+    {
+        if (!TryGetCustomerUserId(out var customerUserId))
+        {
+            return InvalidSubject();
+        }
+
+        return HandleAsync(() => _orderService.GetMineByIdAsync(
+            customerUserId,
+            orderId,
+            cancellationToken));
+    }
 
     [HttpPost("checkout")]
     public Task<IActionResult> Checkout(
         [FromBody] CheckoutRequest request,
         CancellationToken cancellationToken)
-        => HandleAsync(() => _orderService.CheckoutAsync(request, cancellationToken));
-
-    [HttpPatch("{orderId:int}/status")]
-    public Task<IActionResult> UpdateStatus(
-        int orderId,
-        [FromBody] OrderStatusUpdateRequest request,
-        CancellationToken cancellationToken)
     {
-        if (!IsAdminOrStaff())
+        if (!TryGetCustomerUserId(out var customerUserId))
         {
-            return Task.FromResult<IActionResult>(Forbid());
+            return InvalidSubject();
         }
 
-        return HandleAsync(() => _orderService.UpdateStatusAsync(
-            orderId,
-            request,
-            cancellationToken));
+        return HandleAsync(
+            () => _orderService.CheckoutAsync(
+                customerUserId,
+                request,
+                cancellationToken),
+            order => StatusCode(StatusCodes.Status201Created, order));
     }
 
-    private bool IsAdminOrStaff()
-    {
-        var role = Request.Headers["X-Role"].ToString();
-        return string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(role, "Staff", StringComparison.OrdinalIgnoreCase);
-    }
+    private bool TryGetCustomerUserId(out int customerUserId)
+        => int.TryParse(
+            User.FindFirstValue(JwtRegisteredClaimNames.Sub),
+            out customerUserId);
+
+    private Task<IActionResult> InvalidSubject()
+        => Task.FromResult<IActionResult>(Error(
+            StatusCodes.Status401Unauthorized,
+            "Unauthorized",
+            "The access token is missing a valid subject claim."));
 }

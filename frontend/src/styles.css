@@ -936,6 +936,67 @@ textarea:focus-visible {
   text-align: center;
 }
 
+.cart-api-message {
+  display: flex;
+  padding: 12px 18px;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.cart-api-message span { flex: 1; }
+
+.cart-api-message button {
+  display: grid;
+  padding: 4px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cart-api-message--error { background: #fff0ed; color: var(--color-error); }
+.cart-api-message--success { background: #edf8ef; color: #27643a; }
+
+.cart-checkout-form {
+  max-height: 54dvh;
+  overflow-y: auto;
+}
+
+.cart-checkout-form label {
+  display: grid;
+  margin-bottom: 12px;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.cart-checkout-form select,
+.cart-checkout-form textarea {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  outline: none;
+  background: white;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.cart-checkout-form textarea { min-height: 62px; resize: vertical; }
+
+.cart-checkout-form select:focus,
+.cart-checkout-form textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(194, 92, 45, 0.12);
+}
+
+.cart-checkout-form .button + .button { margin-top: 8px; }
+
 .site-footer {
   display: flex;
   width: min(1220px, calc(100% - 48px));
